@@ -1,0 +1,20 @@
+<resources>
+    <string name="note_list_title">Mis notas</string>
+    <plurals name="note_list_summary">
+        <item quantity="one">%d nota · un espacio para tus ideas</item>
+        <item quantity="other">%d notas · un espacio para tus ideas</item>
+    </plurals>
+    <string name="note_list_settings">Ajustes</string>
+    <string name="note_list_search_placeholder">Buscar en tus notas</string>
+    <string name="note_list_filter_all">Todas</string>
+    <string name="note_list_filter_work">Trabajo</string>
+    <string name="note_list_filter_personal">Personal</string>
+    <string name="note_list_sort_last_edited">Última edición</string>
+    <string name="note_list_create_note">Nueva nota</string>
+    <string name="note_list_pinned">Fijada</string>
+    <string name="note_list_empty">Aún no tienes notas. Crea la primera.</string>
+    <string name="note_list_error">No pudimos cargar tus notas. Inténtalo de nuevo más tarde.</string>
+    <string name="note_list_loading">Cargando notas</string>
+    <string name="note_date_today">Hoy, %1$s</string>
+    <string name="note_date_yesterday">Ayer</string>
+</resources>

@@ -3,23 +3,28 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado actual
-- v1 en desarrollo: aún sin código. Listos `CLAUDE.md` y las skills `new-feature`, `write-tests` y `room-migration`.
-- Alcance de v1: agregar notas de texto, ver el listado, editarlas, eliminarlas y ordenarlas por fecha.
-- Datos en Room, solo en el dispositivo.
+- Existen los 5 módulos (`:app`, `:presentation`, `:domain`, `:data`, `:common`) con Hilt, Room (v1, esquema en `data/schemas`) y Navigation Compose.
+- Pantalla **Mis notas** (`presentation/notes/list`) implementada desde Figma (`JyeMmyDAEO1Y52QnwKwgGH`, nodo `4:1583`), con pruebas unitarias e instrumentadas.
+- Pendiente en Figma: Editor (`4:1656`), selector de color (`4:1710`), Ajustes (`4:1794`).
 
 ## Decisiones (y por qué)
-- Clean Architecture con módulos `:app`, `:presentation`, `:domain`, `:data` y `:common`: separar responsabilidades y poder probar cada capa por separado.
-- MVI en presentación: un solo `UiState` por pantalla hace el estado predecible y fácil de probar.
-- Jetpack Compose + Hilt + Room: stack estándar de Android, sin dependencias fuera de lo necesario.
-- Solo notas de texto en v1: sin imágenes, etiquetas, búsqueda ni sincronización, para cerrar un flujo completo antes de crecer.
-- Pruebas unitarias y de UI desde el inicio: cada caso de uso, ViewModel y pantalla nace con sus pruebas.
+- Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
+- `Note` incluye `color` (`NoteColor`) e `isPinned`: el diseño los muestra; aprobado como parte de v1.
+- Búsqueda y filtros (Todas/Trabajo/Personal) **solo visuales** en v1: no hay etiquetas ni búsqueda todavía.
+- Orden fijo en `GetNotesUseCase`: fijadas primero, luego última edición desc. El ícono de orden no hace nada.
+- Tema **solo oscuro** (el diseño no define claro); sin dynamic color. Tokens en `NotesTheme` (spacing, sizes, radii, noteColors).
+- Fuente Inter en `res/font`; íconos Lucide de Figma como VectorDrawable en `presentation/res/drawable`.
+- Datos semilla (6 notas del diseño) con `SeedNotesCallback` al crear la base.
+- Fechas relativas con `NoteDateFormatter` (java.util, minSdk 24 sin desugaring).
+- Navegación con rutas string (sin plugin de serialization para no sumar dependencias).
 
 ## Aprendizajes y errores a evitar
-- (vacío por ahora)
+- No hay `java` en PATH: usar `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`.
+- AGP 9 trae Kotlin integrado: los módulos Android no aplican `kotlin-android`; los JVM puros usan `kotlin-jvm`.
+- Pruebas JVM que crean `SQLiteException` necesitan `unitTests.isReturnDefaultValues = true` (`:data`).
+- `LazyVerticalStaggeredGrid` reparte por columna más corta: el orden visual difiere del mock de Figma (columnas fijas).
 
 ## Próximos pasos
-- Crear el proyecto con los cinco módulos y el version catalog.
-- Definir `Note` en `:domain` y `NoteEntity`, `NoteDao` y `NotesDatabase` (versión 1) en `:data`.
-- Decidir el orden por fecha: ¿creación o última modificación?, ¿descendente fijo o lo elige el usuario?
-- Pantalla de listado (`/new-feature`) y pantalla de crear/editar nota.
+- Pantalla de editor (crear/editar) y conectar `onNavigateToNote` en `NotesNavHost`.
 - Eliminar nota, con confirmación o deshacer.
+- Prueba de flujo completo con `HiltTestRunner` + `@TestInstallIn` (aún no existe).
