@@ -3,3 +3,7 @@
 - Haz solo lo que se pidió: no refactorices, renombres ni reformatees código ajeno a la tarea. Si ves algo mejorable, menciónalo al final.
 - Si una tarea es ambigua o hay más de una forma razonable de resolverla, pregunta antes de elegir.
 - Nunca des una tarea por terminada si el proyecto no compila o hay pruebas fallando; si no pudiste verificar algo, dilo explícitamente.
+
+## Pruebas con agentes
+- No escribas las pruebas directamente: delega en los agentes.
+- **`test-writer`** escribe las pruebas de cada clase o pantalla nueva o modificada: unitarias (casos de uso, ViewModels, repositorios, mappers) y de UI (`XxxScreen`, DAO).
