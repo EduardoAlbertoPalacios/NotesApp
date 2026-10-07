@@ -1,4 +1,4 @@
-package com.example.notesapp.presentation.notes.list
+package com.example.notesapp.presentation.notes.common
 
 import java.util.Calendar
 import java.util.Locale

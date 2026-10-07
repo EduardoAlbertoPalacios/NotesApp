@@ -8,4 +8,11 @@ data class Note(
     val isPinned: Boolean,
     /** Fecha de la última edición, en milisegundos desde epoch. */
     val updatedAt: Long,
-)
+) {
+    val isBlank: Boolean get() = title.isBlank() && content.isBlank()
+
+    companion object {
+        /** Id de una nota que todavía no se ha guardado. */
+        const val NEW_ID = 0L
+    }
+}

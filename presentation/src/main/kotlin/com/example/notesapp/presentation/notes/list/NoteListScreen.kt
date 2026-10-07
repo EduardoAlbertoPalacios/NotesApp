@@ -49,6 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.notes.common.NoteDateLabel
+import com.example.notesapp.presentation.notes.common.asText
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
 
@@ -396,13 +398,6 @@ private fun NoteColor.toContainerColor(): Color {
         NoteColor.LAVENDER -> colors.lavender
         NoteColor.PEACH -> colors.peach
     }
-}
-
-@Composable
-private fun NoteDateLabel.asText(): String = when (this) {
-    is NoteDateLabel.Today -> stringResource(R.string.note_date_today, time)
-    NoteDateLabel.Yesterday -> stringResource(R.string.note_date_yesterday)
-    is NoteDateLabel.Date -> dayMonth
 }
 
 private const val NOTE_COLUMNS = 2

@@ -9,6 +9,7 @@ data class Spacing(
     val xxxs: Dp = 2.dp,
     val xxs: Dp = 4.dp,
     val xs: Dp = 5.dp,
+    val xsm: Dp = 6.dp,
     val s: Dp = 8.dp,
     val sm: Dp = 10.dp,
     val m: Dp = 12.dp,
@@ -25,6 +26,7 @@ data class Sizes(
     val searchHeight: Dp = 50.dp,
     val chipHeight: Dp = 34.dp,
     val fabHeight: Dp = 60.dp,
+    val topBarHeight: Dp = 64.dp,
 )
 
 @Immutable

@@ -2,6 +2,7 @@ package com.example.notesapp.presentation.notes.list
 
 import androidx.compose.runtime.Immutable
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.presentation.notes.common.NoteDateLabel
 
 @Immutable
 data class NoteListUiState(
@@ -19,9 +20,3 @@ data class NoteItemUi(
     val isPinned: Boolean,
     val date: NoteDateLabel,
 )
-
-sealed interface NoteDateLabel {
-    data class Today(val time: String) : NoteDateLabel
-    data object Yesterday : NoteDateLabel
-    data class Date(val dayMonth: String) : NoteDateLabel
-}

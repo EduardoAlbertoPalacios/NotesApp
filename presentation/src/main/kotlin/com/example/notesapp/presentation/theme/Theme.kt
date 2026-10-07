@@ -23,6 +23,7 @@ private val LocalNoteColors = staticCompositionLocalOf { NoteColors() }
 private val LocalSpacing = staticCompositionLocalOf { Spacing() }
 private val LocalSizes = staticCompositionLocalOf { Sizes() }
 private val LocalRadii = staticCompositionLocalOf { Radii() }
+private val LocalNotesTypography = staticCompositionLocalOf { NotesTypography() }
 
 /** El diseño solo define modo oscuro. */
 @Composable
@@ -32,6 +33,7 @@ fun NotesAppTheme(content: @Composable () -> Unit) {
         LocalSpacing provides Spacing(),
         LocalSizes provides Sizes(),
         LocalRadii provides Radii(),
+        LocalNotesTypography provides NotesTypography(),
     ) {
         MaterialTheme(
             colorScheme = DarkColorScheme,
@@ -50,4 +52,6 @@ object NotesTheme {
         @Composable @ReadOnlyComposable get() = LocalSizes.current
     val radii: Radii
         @Composable @ReadOnlyComposable get() = LocalRadii.current
+    val typography: NotesTypography
+        @Composable @ReadOnlyComposable get() = LocalNotesTypography.current
 }

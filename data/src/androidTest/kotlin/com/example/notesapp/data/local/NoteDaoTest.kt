@@ -43,6 +43,19 @@ class NoteDaoTest {
     }
 
     @Test
+    fun insert_update_get_and_delete_note() = runTest {
+        val id = dao.insert(NoteEntity(title = "Ideas", content = "", color = "AQUA", isPinned = false, updatedAt = 1))
+
+        val updated = NoteEntity(id = id, title = "Ideas", content = "Libreta", color = "AQUA", isPinned = true, updatedAt = 2)
+        assertEquals(1, dao.update(updated))
+        assertEquals(updated, dao.getById(id))
+
+        dao.deleteById(id)
+        assertEquals(null, dao.getById(id))
+        assertEquals(0, dao.update(updated))
+    }
+
+    @Test
     fun seed_callback_inserts_sample_notes_on_create() = runTest {
         val seeded = Room.inMemoryDatabaseBuilder(
             ApplicationProvider.getApplicationContext(),

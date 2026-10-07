@@ -1,6 +1,7 @@
 package com.example.notesapp.presentation.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -20,6 +21,8 @@ private val SemiBold = Regular.copy(fontWeight = FontWeight.SemiBold)
 val Typography = Typography(
     // Título de página.
     headlineLarge = SemiBold.copy(fontSize = 34.sp),
+    // Título de la nota en el editor.
+    headlineMedium = SemiBold.copy(fontSize = 32.sp, lineHeight = 1.15.em),
     // Título de tarjeta de nota.
     titleMedium = SemiBold.copy(fontSize = 17.sp, lineHeight = 1.2.em),
     // Acción principal (botón "Nueva nota").
@@ -36,4 +39,10 @@ val Typography = Typography(
     labelMedium = Regular.copy(fontSize = 12.sp),
     // Fecha de la nota.
     labelSmall = Regular.copy(fontSize = 10.sp),
+)
+
+/** Estilos del diseño que no encajan en los roles de Material. */
+@Immutable
+data class NotesTypography(
+    val editorBody: TextStyle = Regular.copy(fontSize = 16.sp, lineHeight = 1.65.em),
 )

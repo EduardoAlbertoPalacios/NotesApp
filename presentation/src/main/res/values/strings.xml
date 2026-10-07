@@ -17,4 +17,22 @@
     <string name="note_list_loading">Cargando notas</string>
     <string name="note_date_today">Hoy, %1$s</string>
     <string name="note_date_yesterday">Ayer</string>
+
+    <string name="note_editor_back">Volver</string>
+    <string name="note_editor_pin">Fijar nota</string>
+    <string name="note_editor_unpin">Dejar de fijar nota</string>
+    <string name="note_editor_more_options">Más opciones</string>
+    <string name="note_editor_title_placeholder">Título</string>
+    <string name="note_editor_content_placeholder">Escribe tu nota…</string>
+    <string name="note_editor_saving">Guardando…</string>
+    <string name="note_editor_saved">Todos los cambios guardados</string>
+    <string name="note_editor_delete">Eliminar nota</string>
+    <string name="note_editor_delete_title">¿Eliminar esta nota?</string>
+    <string name="note_editor_delete_message">No podrás recuperarla.</string>
+    <string name="note_editor_delete_confirm">Eliminar</string>
+    <string name="note_editor_delete_cancel">Cancelar</string>
+    <string name="note_editor_not_found">Esta nota ya no existe.</string>
+    <string name="note_editor_load_error">No pudimos abrir la nota. Inténtalo de nuevo más tarde.</string>
+    <string name="note_editor_save_error">No pudimos guardar los cambios. Inténtalo de nuevo.</string>
+    <string name="note_editor_delete_error">No pudimos eliminar la nota. Inténtalo de nuevo.</string>
 </resources>

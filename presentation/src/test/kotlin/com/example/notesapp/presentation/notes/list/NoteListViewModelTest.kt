@@ -8,6 +8,7 @@ import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.presentation.MainDispatcherRule
+import com.example.notesapp.presentation.notes.common.NoteDateFormatter
 import java.util.Locale
 import java.util.TimeZone
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +26,9 @@ class NoteListViewModelTest {
     private val notes = MutableSharedFlow<AppResult<List<Note>, NoteError>>(replay = 1)
     private val repository = object : NoteRepository {
         override fun observeNotes(): Flow<AppResult<List<Note>, NoteError>> = notes
+        override suspend fun getNote(id: Long): AppResult<Note, NoteError> = AppResult.Error(NoteError.NotFound)
+        override suspend fun saveNote(note: Note): AppResult<Long, NoteError> = AppResult.Error(NoteError.Storage)
+        override suspend fun deleteNote(id: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
     }
     private val now = 1_700_000_000_000L
     private val dateFormatter = NoteDateFormatter(

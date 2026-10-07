@@ -4,8 +4,9 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Estado actual
 - Existen los 5 módulos (`:app`, `:presentation`, `:domain`, `:data`, `:common`) con Hilt, Room (v1, esquema en `data/schemas`) y Navigation Compose.
-- Pantalla **Mis notas** (`presentation/notes/list`) implementada desde Figma (`JyeMmyDAEO1Y52QnwKwgGH`, nodo `4:1583`), con pruebas unitarias e instrumentadas.
-- Pendiente en Figma: Editor (`4:1656`), selector de color (`4:1710`), Ajustes (`4:1794`).
+- Pantalla **Mis notas** (`presentation/notes/list`) implementada desde Figma (`JyeMmyDAEO1Y52QnwKwgGH`, nodo `4:1583`).
+- **Editor** (`presentation/notes/editor`, Figma `4:1656`): crear, editar (solo texto plano), fijar y eliminar.
+- Pendiente en Figma: selector de color (`4:1710`), Ajustes (`4:1794`).
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
@@ -16,15 +17,19 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Fuente Inter en `res/font`; íconos Lucide de Figma como VectorDrawable en `presentation/res/drawable`.
 - Datos semilla (6 notas del diseño) con `SeedNotesCallback` al crear la base.
 - Fechas relativas con `NoteDateFormatter` (java.util, minSdk 24 sin desugaring).
-- Navegación con rutas string (sin plugin de serialization para no sumar dependencias).
+- Navegación con rutas string (sin plugin de serialization para no sumar dependencias). Editor: `notes/editor?noteId=` (0 = nueva).
+- Editor: autoguardado 500 ms tras dejar de escribir y al salir; nota nueva vacía no se crea (`SaveNoteUseCase` → `EmptyNote`). Vaciar una nota existente conserva su última versión.
+- Editor: barra inferior, etiqueta de categoría y Compartir ocultos hasta tener esas funciones. Nota nueva = color AQUA.
+- Eliminar: menú ⋮ + diálogo de confirmación (sin deshacer).
+- `TimeProvider` en `:common` para fijar la fecha de edición en pruebas.
 
 ## Aprendizajes y errores a evitar
 - No hay `java` en PATH: usar `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`.
 - AGP 9 trae Kotlin integrado: los módulos Android no aplican `kotlin-android`; los JVM puros usan `kotlin-jvm`.
 - Pruebas JVM que crean `SQLiteException` necesitan `unitTests.isReturnDefaultValues = true` (`:data`).
+- Pruebas de UI de campos de texto: usar un estado que se actualice con los intents; con estado fijo el campo reenvía el valor viejo al perder el foco.
 - `LazyVerticalStaggeredGrid` reparte por columna más corta: el orden visual difiere del mock de Figma (columnas fijas).
 
 ## Próximos pasos
-- Pantalla de editor (crear/editar) y conectar `onNavigateToNote` en `NotesNavHost`.
-- Eliminar nota, con confirmación o deshacer.
+- Selector de color de nota (Figma `4:1710`) y pantalla de Ajustes (`4:1794`).
 - Prueba de flujo completo con `HiltTestRunner` + `@TestInstallIn` (aún no existe).

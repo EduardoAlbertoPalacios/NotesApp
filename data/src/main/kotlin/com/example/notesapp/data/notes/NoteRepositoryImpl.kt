@@ -23,4 +23,30 @@ internal class NoteRepositoryImpl @Inject constructor(
             .catch { error ->
                 if (error is SQLException) emit(AppResult.Error(NoteError.Storage)) else throw error
             }
+
+    override suspend fun getNote(id: Long): AppResult<Note, NoteError> = storage {
+        noteDao.getById(id)?.let { AppResult.Success(it.toDomain()) } ?: AppResult.Error(NoteError.NotFound)
+    }
+
+    override suspend fun saveNote(note: Note): AppResult<Long, NoteError> = storage {
+        if (note.id == Note.NEW_ID) {
+            AppResult.Success(noteDao.insert(note.toEntity()))
+        } else if (noteDao.update(note.toEntity()) > 0) {
+            AppResult.Success(note.id)
+        } else {
+            AppResult.Error(NoteError.NotFound)
+        }
+    }
+
+    override suspend fun deleteNote(id: Long): AppResult<Unit, NoteError> = storage {
+        noteDao.deleteById(id)
+        AppResult.Success(Unit)
+    }
+
+    private inline fun <T> storage(block: () -> AppResult<T, NoteError>): AppResult<T, NoteError> =
+        try {
+            block()
+        } catch (error: SQLException) {
+            AppResult.Error(NoteError.Storage)
+        }
 }
