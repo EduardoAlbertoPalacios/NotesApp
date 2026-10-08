@@ -1,12 +1,16 @@
 package com.example.notesapp.presentation.notes.list
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import org.junit.Assert.assertEquals
@@ -86,4 +90,56 @@ class NoteListScreenTest {
 
         composeRule.onNodeWithTag(NoteListTestTags.ERROR).assertIsDisplayed()
     }
+
+    @Test
+    fun given_filter_chips_when_clicked_then_sends_filter_selected() {
+        setContent(NoteListUiState(isLoading = false, notes = listOf(note)))
+
+        composeRule.onNodeWithTag(NoteListTestTags.FILTER + NoteFilter.WORK.name).performClick()
+        composeRule.onNodeWithTag(NoteListTestTags.FILTER + NoteFilter.PERSONAL.name).performClick()
+        composeRule.onNodeWithTag(NoteListTestTags.FILTER + NoteFilter.ALL.name).performClick()
+
+        assertEquals(
+            listOf(
+                NoteListIntent.FilterSelected(NoteFilter.WORK),
+                NoteListIntent.FilterSelected(NoteFilter.PERSONAL),
+                NoteListIntent.FilterSelected(NoteFilter.ALL),
+            ),
+            intents,
+        )
+    }
+
+    @Test
+    fun given_selected_filter_when_displayed_then_only_that_chip_is_selected() {
+        setContent(NoteListUiState(isLoading = false, notes = listOf(note), selectedFilter = NoteFilter.WORK))
+
+        composeRule.onNodeWithTag(NoteListTestTags.FILTER + NoteFilter.WORK.name).assertIsSelected()
+        composeRule.onNodeWithTag(NoteListTestTags.FILTER + NoteFilter.ALL.name).assertIsNotSelected()
+        composeRule.onNodeWithTag(NoteListTestTags.FILTER + NoteFilter.PERSONAL.name).assertIsNotSelected()
+    }
+
+    @Test
+    fun given_no_notes_and_all_filter_when_displayed_then_shows_general_empty_message() {
+        setContent(NoteListUiState(isLoading = false, selectedFilter = NoteFilter.ALL))
+
+        composeRule.onNodeWithText(string(R.string.note_list_empty)).assertIsDisplayed()
+    }
+
+    @Test
+    fun given_no_notes_and_work_filter_when_displayed_then_shows_work_empty_message() {
+        setContent(NoteListUiState(isLoading = false, selectedFilter = NoteFilter.WORK))
+
+        composeRule.onNodeWithText(string(R.string.note_list_empty_work)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.note_list_empty)).assertDoesNotExist()
+    }
+
+    @Test
+    fun given_no_notes_and_personal_filter_when_displayed_then_shows_personal_empty_message() {
+        setContent(NoteListUiState(isLoading = false, selectedFilter = NoteFilter.PERSONAL))
+
+        composeRule.onNodeWithText(string(R.string.note_list_empty_personal)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.note_list_empty)).assertDoesNotExist()
+    }
+
+    private fun string(id: Int): String = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
 }

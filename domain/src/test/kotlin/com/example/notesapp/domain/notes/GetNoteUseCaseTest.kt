@@ -13,6 +13,7 @@ class GetNoteUseCaseTest {
         content = "Hábitos atómicos",
         color = NoteColor.MINT,
         isPinned = false,
+        category = null,
         updatedAt = 10,
     )
 

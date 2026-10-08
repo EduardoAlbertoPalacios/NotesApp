@@ -6,6 +6,8 @@ data class Note(
     val content: String,
     val color: NoteColor,
     val isPinned: Boolean,
+    /** Nula si la nota no tiene categoría. */
+    val category: NoteCategory?,
     /** Fecha de la última edición, en milisegundos desde epoch. */
     val updatedAt: Long,
 ) {

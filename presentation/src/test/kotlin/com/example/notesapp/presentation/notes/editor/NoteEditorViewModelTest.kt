@@ -7,6 +7,7 @@ import com.example.notesapp.common.time.TimeProvider
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
 import com.example.notesapp.domain.notes.GetNoteUseCase
 import com.example.notesapp.domain.notes.Note
+import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteRepository
@@ -47,11 +48,17 @@ class NoteEditorViewModelTest {
         content = "Menos ruido, más foco.",
         color = NoteColor.ROSE,
         isPinned = false,
+        category = null,
         updatedAt = NOW - 1_000,
     )
 
-    private fun createViewModel(noteId: Long? = null) = NoteEditorViewModel(
-        savedStateHandle = SavedStateHandle(noteId?.let { mapOf(NoteEditorViewModel.NOTE_ID_ARG to it) }.orEmpty()),
+    private fun createViewModel(noteId: Long? = null, category: String? = null) = NoteEditorViewModel(
+        savedStateHandle = SavedStateHandle(
+            buildMap {
+                noteId?.let { put(NoteEditorViewModel.NOTE_ID_ARG, it) }
+                category?.let { put(NoteEditorViewModel.CATEGORY_ARG, it) }
+            },
+        ),
         getNote = GetNoteUseCase(repository),
         saveNote = SaveNoteUseCase(repository, TimeProvider { NOW }),
         deleteNote = DeleteNoteUseCase(repository),
@@ -234,6 +241,94 @@ class NoteEditorViewModelTest {
         viewModel.effects.test {
             viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
             assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error), awaitItem())
+        }
+    }
+
+    @Test
+    fun `given category argument when creating new note then starts with that category`() = runTest {
+        val viewModel = createViewModel(category = NoteCategory.WORK.name)
+        advanceUntilIdle()
+
+        assertEquals(NoteEditorUiState(category = NoteCategory.WORK), viewModel.state.value)
+    }
+
+    @Test
+    fun `given category argument when new note is autosaved then stores that category`() = runTest {
+        val viewModel = createViewModel(category = NoteCategory.PERSONAL.name)
+
+        viewModel.onIntent(NoteEditorIntent.TitleChanged("La compra"))
+        advanceUntilIdle()
+
+        assertEquals(NoteCategory.PERSONAL, repository.notes.values.single().category)
+    }
+
+    @Test
+    fun `given unknown category argument when creating new note then has no category`() = runTest {
+        val viewModel = createViewModel(category = "HOBBY")
+        advanceUntilIdle()
+
+        assertEquals(null, viewModel.state.value.category)
+    }
+
+    @Test
+    fun `given existing note with category when loaded then exposes its category`() = runTest {
+        repository.notes[existing.id] = existing.copy(category = NoteCategory.WORK)
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertEquals(NoteCategory.WORK, viewModel.state.value.category)
+    }
+
+    @Test
+    fun `given existing note when category clicked then assigns it and saves immediately`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.PERSONAL))
+        runCurrent()
+
+        assertEquals(NoteCategory.PERSONAL, viewModel.state.value.category)
+        assertEquals(NoteCategory.PERSONAL, repository.notes[existing.id]?.category)
+    }
+
+    @Test
+    fun `given note with category when same category clicked then removes it and saves`() = runTest {
+        repository.notes[existing.id] = existing.copy(category = NoteCategory.WORK)
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.WORK))
+        runCurrent()
+
+        assertEquals(null, viewModel.state.value.category)
+        assertEquals(null, repository.notes[existing.id]?.category)
+    }
+
+    @Test
+    fun `given note with category when other category clicked then replaces it`() = runTest {
+        repository.notes[existing.id] = existing.copy(category = NoteCategory.WORK)
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.PERSONAL))
+        runCurrent()
+
+        assertEquals(NoteCategory.PERSONAL, viewModel.state.value.category)
+        assertEquals(NoteCategory.PERSONAL, repository.notes[existing.id]?.category)
+    }
+
+    @Test
+    fun `given category changed when back clicked then navigates back`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.WORK))
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            advanceUntilIdle()
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
         }
     }
 

@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,12 +37,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +66,7 @@ object NoteListTestTags {
     const val LOADING = "note_list_loading"
     const val EMPTY = "note_list_empty"
     const val ERROR = "note_list_error"
+    const val FILTER = "note_list_filter_"
 }
 
 @Composable
@@ -97,7 +102,7 @@ fun NoteListScreen(
         ) {
             fullLineItem { NoteListHeader(state = state, onIntent = onIntent) }
             fullLineItem { SearchField() }
-            fullLineItem { Filters() }
+            fullLineItem { Filters(selected = state.selectedFilter, onIntent = onIntent) }
             fullLineItem { SortRow() }
             when {
                 state.isLoading -> fullLineItem { LoadingState() }
@@ -109,7 +114,7 @@ fun NoteListScreen(
                 }
                 state.notes.isEmpty() -> fullLineItem {
                     MessageState(
-                        text = stringResource(R.string.note_list_empty),
+                        text = stringResource(state.selectedFilter.emptyMessageRes()),
                         modifier = Modifier.testTag(NoteListTestTags.EMPTY),
                     )
                 }
@@ -190,7 +195,10 @@ private fun SearchField(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(NotesTheme.sizes.searchHeight)
-            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(NotesTheme.radii.pill))
+            .background(
+                MaterialTheme.colorScheme.surfaceContainer,
+                RoundedCornerShape(NotesTheme.radii.pill)
+            )
             .padding(horizontal = spacing.l),
         horizontalArrangement = Arrangement.spacedBy(spacing.m),
         verticalAlignment = Alignment.CenterVertically,
@@ -208,36 +216,52 @@ private fun SearchField(modifier: Modifier = Modifier) {
     }
 }
 
-/** Solo visual por ahora: los filtros por categoría quedan fuera del alcance de v1. */
 @Composable
-private fun Filters(modifier: Modifier = Modifier) {
+private fun Filters(
+    selected: NoteFilter,
+    onIntent: (NoteListIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val spacing = NotesTheme.spacing
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = spacing.s),
+            .padding(vertical = spacing.s)
+            .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(spacing.s),
     ) {
-        FilterLabel(text = stringResource(R.string.note_list_filter_all), isSelected = true)
-        FilterLabel(text = stringResource(R.string.note_list_filter_work), isSelected = false)
-        FilterLabel(text = stringResource(R.string.note_list_filter_personal), isSelected = false)
+        NoteFilter.entries.forEach { filter ->
+            FilterChip(
+                text = stringResource(filter.labelRes()),
+                isSelected = filter == selected,
+                color = when (selected) {
+                    NoteFilter.ALL -> MaterialTheme.colorScheme.tertiary
+                    NoteFilter.WORK -> MaterialTheme.colorScheme.primary
+                    NoteFilter.PERSONAL -> MaterialTheme.colorScheme.secondary
+                },
+                onClick = { onIntent(NoteListIntent.FilterSelected(filter)) },
+                modifier = Modifier.testTag(NoteListTestTags.FILTER + filter.name),
+            )
+        }
     }
 }
 
 @Composable
-private fun FilterLabel(
+private fun FilterChip(
     text: String,
     isSelected: Boolean,
+    color: Color,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(NotesTheme.radii.pill)
     Box(
         modifier = modifier
             .height(NotesTheme.sizes.chipHeight)
-            .background(
-                color = if (isSelected) colors.primary else colors.surfaceContainer,
-                shape = RoundedCornerShape(NotesTheme.radii.pill),
-            )
+            .clip(shape)
+            .background(color = if (isSelected) color else colors.surfaceContainer)
+            .selectable(selected = isSelected, role = Role.Tab, onClick = onClick)
             .padding(horizontal = NotesTheme.spacing.l),
         contentAlignment = Alignment.Center,
     ) {
@@ -385,6 +409,18 @@ private fun MessageState(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
+}
+
+private fun NoteFilter.labelRes(): Int = when (this) {
+    NoteFilter.ALL -> R.string.note_list_filter_all
+    NoteFilter.WORK -> R.string.note_list_filter_work
+    NoteFilter.PERSONAL -> R.string.note_list_filter_personal
+}
+
+private fun NoteFilter.emptyMessageRes(): Int = when (this) {
+    NoteFilter.ALL -> R.string.note_list_empty
+    NoteFilter.WORK -> R.string.note_list_empty_work
+    NoteFilter.PERSONAL -> R.string.note_list_empty_personal
 }
 
 @Composable

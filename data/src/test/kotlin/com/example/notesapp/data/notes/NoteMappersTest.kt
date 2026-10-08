@@ -2,6 +2,7 @@ package com.example.notesapp.data.notes
 
 import com.example.notesapp.data.local.NoteEntity
 import com.example.notesapp.domain.notes.Note
+import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -15,6 +16,7 @@ class NoteMappersTest {
         color = "ROSE",
         isPinned = true,
         updatedAt = 1_000,
+        category = "WORK",
     )
     private val note = Note(
         id = 7,
@@ -22,6 +24,7 @@ class NoteMappersTest {
         content = "Café",
         color = NoteColor.ROSE,
         isPinned = true,
+        category = NoteCategory.WORK,
         updatedAt = 1_000,
     )
 
@@ -38,5 +41,28 @@ class NoteMappersTest {
     @Test
     fun `given unknown color when mapping to domain then falls back to aqua`() {
         assertEquals(NoteColor.AQUA, entity.copy(color = "MAGENTA").toDomain().color)
+    }
+
+    @Test
+    fun `given personal category when mapping both ways then keeps it`() {
+        val personal = note.copy(category = NoteCategory.PERSONAL)
+
+        assertEquals("PERSONAL", personal.toEntity().category)
+        assertEquals(personal, personal.toEntity().toDomain())
+    }
+
+    @Test
+    fun `given entity without category when mapping to domain then category is null`() {
+        assertEquals(null, entity.copy(category = null).toDomain().category)
+    }
+
+    @Test
+    fun `given note without category when mapping to entity then category is null`() {
+        assertEquals(null, note.copy(category = null).toEntity().category)
+    }
+
+    @Test
+    fun `given unknown category name when mapping to domain then category is null`() {
+        assertEquals(null, entity.copy(category = "HOBBY").toDomain().category)
     }
 }

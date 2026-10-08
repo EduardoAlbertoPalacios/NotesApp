@@ -10,6 +10,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 private val DarkColorScheme = darkColorScheme(
     primary = Aqua,
     onPrimary = Ink,
+    secondary = Sand,
+    tertiary = Mint,
     background = Black,
     onBackground = Snow,
     surface = Black,
@@ -17,6 +19,7 @@ private val DarkColorScheme = darkColorScheme(
     surfaceContainer = Graphite,
     surfaceVariant = Graphite,
     onSurfaceVariant = Ash,
+    outlineVariant = Iron,
 )
 
 private val LocalNoteColors = staticCompositionLocalOf { NoteColors() }

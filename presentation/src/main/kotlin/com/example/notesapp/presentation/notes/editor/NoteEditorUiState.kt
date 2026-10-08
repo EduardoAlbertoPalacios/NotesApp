@@ -1,6 +1,7 @@
 package com.example.notesapp.presentation.notes.editor
 
 import androidx.compose.runtime.Immutable
+import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 
 @Immutable
@@ -11,6 +12,7 @@ data class NoteEditorUiState(
     val title: String = "",
     val content: String = "",
     val isPinned: Boolean = false,
+    val category: NoteCategory? = null,
     /** Fecha de la última edición; nula mientras la nota no se ha guardado. */
     val date: NoteDateLabel? = null,
     val saveStatus: SaveStatus = SaveStatus.Idle,

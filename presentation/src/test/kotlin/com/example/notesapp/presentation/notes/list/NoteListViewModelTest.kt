@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.GetNotesUseCase
 import com.example.notesapp.domain.notes.Note
+import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteRepository
@@ -105,7 +106,7 @@ class NoteListViewModelTest {
 
         viewModel.effects.test {
             viewModel.onIntent(NoteListIntent.CreateNoteClicked)
-            assertEquals(NoteListEffect.NavigateToNote(null), awaitItem())
+            assertEquals(NoteListEffect.NavigateToNote(id = null, category = null), awaitItem())
         }
     }
 
@@ -119,12 +120,115 @@ class NoteListViewModelTest {
         }
     }
 
-    private fun note(id: Long, isPinned: Boolean = false, updatedAt: Long) = Note(
+    @Test
+    fun `given created when no filter selected then selected filter is all and shows every note`() = runTest {
+        val viewModel = createViewModel()
+
+        notes.emit(AppResult.Success(mixedNotes))
+
+        assertEquals(NoteFilter.ALL, viewModel.state.value.selectedFilter)
+        assertEquals(listOf(1L, 2L, 3L), viewModel.state.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `given work filter selected when intent received then shows only work notes`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+
+        assertEquals(NoteFilter.WORK, viewModel.state.value.selectedFilter)
+        assertEquals(listOf(1L), viewModel.state.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `given personal filter selected when intent received then shows only personal notes`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.PERSONAL))
+
+        assertEquals(NoteFilter.PERSONAL, viewModel.state.value.selectedFilter)
+        assertEquals(listOf(2L), viewModel.state.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `given category filter when switching back to all then shows every note again`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.ALL))
+
+        assertEquals(NoteFilter.ALL, viewModel.state.value.selectedFilter)
+        assertEquals(listOf(1L, 2L, 3L), viewModel.state.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `given work filter and repository update when new work note arrives then list updates`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+
+        notes.emit(AppResult.Success(mixedNotes + note(id = 4, updatedAt = now, category = NoteCategory.WORK)))
+
+        assertEquals(listOf(4L, 1L), viewModel.state.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `given filter without matching notes when selected then shows empty list`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(listOf(note(id = 3))))
+
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+
+        assertEquals(
+            NoteListUiState(isLoading = false, notes = emptyList(), selectedFilter = NoteFilter.WORK),
+            viewModel.state.value,
+        )
+    }
+
+    @Test
+    fun `given work filter when create note clicked then navigates to new note in work`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.CreateNoteClicked)
+            assertEquals(NoteListEffect.NavigateToNote(id = null, category = NoteCategory.WORK), awaitItem())
+        }
+    }
+
+    @Test
+    fun `given personal filter when create note clicked then navigates to new note in personal`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.PERSONAL))
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.CreateNoteClicked)
+            assertEquals(NoteListEffect.NavigateToNote(id = null, category = NoteCategory.PERSONAL), awaitItem())
+        }
+    }
+
+    private val mixedNotes
+        get() = listOf(
+            note(id = 1, updatedAt = now - 1 * DAY, category = NoteCategory.WORK),
+            note(id = 2, updatedAt = now - 2 * DAY, category = NoteCategory.PERSONAL),
+            note(id = 3, updatedAt = now - 3 * DAY, category = null),
+        )
+
+    private fun note(
+        id: Long,
+        isPinned: Boolean = false,
+        updatedAt: Long = now,
+        category: NoteCategory? = null,
+    ) = Note(
         id = id,
         title = "Nota $id",
         content = "Contenido",
         color = NoteColor.MINT,
         isPinned = isPinned,
+        category = category,
         updatedAt = updatedAt,
     )
 

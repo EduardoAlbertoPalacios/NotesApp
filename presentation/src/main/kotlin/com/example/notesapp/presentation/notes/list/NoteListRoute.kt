@@ -7,10 +7,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.notesapp.domain.notes.NoteCategory
 
 @Composable
 fun NoteListRoute(
-    onNavigateToNote: (Long?) -> Unit,
+    onNavigateToNote: (id: Long?, category: NoteCategory?) -> Unit,
     onNavigateToSettings: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: NoteListViewModel = hiltViewModel(),
@@ -22,7 +23,7 @@ fun NoteListRoute(
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is NoteListEffect.NavigateToNote -> currentOnNavigateToNote(effect.id)
+                is NoteListEffect.NavigateToNote -> currentOnNavigateToNote(effect.id, effect.category)
                 NoteListEffect.NavigateToSettings -> currentOnNavigateToSettings()
             }
         }

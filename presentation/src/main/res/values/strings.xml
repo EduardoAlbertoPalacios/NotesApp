@@ -13,6 +13,8 @@
     <string name="note_list_create_note">Nueva nota</string>
     <string name="note_list_pinned">Fijada</string>
     <string name="note_list_empty">Aún no tienes notas. Crea la primera.</string>
+    <string name="note_list_empty_work">No tienes notas de Trabajo.</string>
+    <string name="note_list_empty_personal">No tienes notas Personales.</string>
     <string name="note_list_error">No pudimos cargar tus notas. Inténtalo de nuevo más tarde.</string>
     <string name="note_list_loading">Cargando notas</string>
     <string name="note_date_today">Hoy, %1$s</string>
@@ -26,6 +28,11 @@
     <string name="note_editor_content_placeholder">Escribe tu nota…</string>
     <string name="note_editor_saving">Guardando…</string>
     <string name="note_editor_saved">Todos los cambios guardados</string>
+    <string name="note_editor_category_title">Categoría</string>
+    <string name="note_category_work">Trabajo</string>
+    <string name="note_category_work_description">Proyectos, reuniones y tareas</string>
+    <string name="note_category_personal">Personal</string>
+    <string name="note_category_personal_description">Recordatorios y vida diaria</string>
     <string name="note_editor_delete">Eliminar nota</string>
     <string name="note_editor_delete_title">¿Eliminar esta nota?</string>
     <string name="note_editor_delete_message">No podrás recuperarla.</string>

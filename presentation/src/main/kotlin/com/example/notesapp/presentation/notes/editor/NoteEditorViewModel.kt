@@ -7,6 +7,7 @@ import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
 import com.example.notesapp.domain.notes.GetNoteUseCase
 import com.example.notesapp.domain.notes.Note
+import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.SaveNoteUseCase
@@ -51,6 +52,9 @@ class NoteEditorViewModel @Inject constructor(
         content = "",
         color = NoteColor.AQUA,
         isPinned = false,
+        // Una nota nueva nace en la categoría del filtro activo del listado, si lo hay.
+        category = savedStateHandle.get<String>(CATEGORY_ARG)
+            ?.let { name -> NoteCategory.entries.firstOrNull { it.name == name } },
         updatedAt = 0,
     )
     private var hasPendingChanges = false
@@ -60,14 +64,21 @@ class NoteEditorViewModel @Inject constructor(
 
     init {
         val noteId = savedStateHandle.get<Long>(NOTE_ID_ARG) ?: Note.NEW_ID
-        if (noteId != Note.NEW_ID) load(noteId)
+        if (noteId == Note.NEW_ID) {
+            _state.update { it.copy(category = note.category) }
+        } else {
+            load(noteId)
+        }
     }
 
     fun onIntent(intent: NoteEditorIntent) {
         when (intent) {
             is NoteEditorIntent.TitleChanged -> edit { it.copy(title = intent.title) }
             is NoteEditorIntent.ContentChanged -> edit { it.copy(content = intent.content) }
-            NoteEditorIntent.PinClicked -> togglePin()
+            NoteEditorIntent.PinClicked -> saveNow { it.copy(isPinned = !it.isPinned) }
+            is NoteEditorIntent.CategoryClicked -> saveNow {
+                it.copy(category = intent.category.takeIf { category -> category != it.category })
+            }
             NoteEditorIntent.DeleteClicked -> _state.update { it.copy(isDeleteDialogVisible = true) }
             NoteEditorIntent.DeleteDismissed -> _state.update { it.copy(isDeleteDialogVisible = false) }
             NoteEditorIntent.DeleteConfirmed -> delete()
@@ -87,6 +98,7 @@ class NoteEditorViewModel @Inject constructor(
                             title = note.title,
                             content = note.content,
                             isPinned = note.isPinned,
+                            category = note.category,
                             date = dateFormatter.format(note.updatedAt),
                         )
                     }
@@ -109,8 +121,9 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
-    private fun togglePin() {
-        _state.update { it.copy(isPinned = !it.isPinned) }
+    /** Cambios de un toque (fijar, categoría): se guardan al momento, sin esperar al autoguardado. */
+    private fun saveNow(transform: (NoteEditorUiState) -> NoteEditorUiState) {
+        _state.update(transform)
         hasPendingChanges = true
         autosaveJob?.cancel()
         viewModelScope.launch { save() }
@@ -119,15 +132,20 @@ class NoteEditorViewModel @Inject constructor(
     private suspend fun save() = saveMutex.withLock {
         if (!hasPendingChanges) return@withLock
         val current = _state.value
-        val draft =
-            note.copy(title = current.title, content = current.content, isPinned = current.isPinned)
+        val draft = note.copy(
+            title = current.title,
+            content = current.content,
+            isPinned = current.isPinned,
+            category = current.category,
+        )
         _state.update { it.copy(saveStatus = SaveStatus.Saving) }
         when (val result = saveNote(draft)) {
             is AppResult.Success -> {
                 note = result.data
                 // Si hubo ediciones durante el guardado, el autoguardado pendiente las guardará.
                 hasPendingChanges = _state.value.run {
-                    title != note.title || content != note.content || isPinned != note.isPinned
+                    title != note.title || content != note.content || isPinned != note.isPinned ||
+                        category != note.category
                 }
                 _state.update {
                     it.copy(saveStatus = SaveStatus.Saved, date = dateFormatter.format(note.updatedAt))
@@ -182,6 +200,8 @@ class NoteEditorViewModel @Inject constructor(
     companion object {
         /** Argumento de navegación con el id de la nota; [Note.NEW_ID] para crear una nueva. */
         const val NOTE_ID_ARG = "noteId"
+        /** Argumento opcional con el nombre de la `NoteCategory` inicial de una nota nueva. */
+        const val CATEGORY_ARG = "category"
         internal const val AUTOSAVE_DELAY_MS = 500L
     }
 }

@@ -23,6 +23,8 @@ val Typography = Typography(
     headlineLarge = SemiBold.copy(fontSize = 34.sp),
     // Título de la nota en el editor.
     headlineMedium = SemiBold.copy(fontSize = 32.sp, lineHeight = 1.15.em),
+    // Título de sección en el editor ("Categoría").
+    titleLarge = SemiBold.copy(fontSize = 18.sp),
     // Título de tarjeta de nota.
     titleMedium = SemiBold.copy(fontSize = 17.sp, lineHeight = 1.2.em),
     // Acción principal (botón "Nueva nota").
@@ -45,4 +47,7 @@ val Typography = Typography(
 @Immutable
 data class NotesTypography(
     val editorBody: TextStyle = Regular.copy(fontSize = 16.sp, lineHeight = 1.65.em),
+    val categoryTitle: TextStyle = SemiBold.copy(fontSize = 14.sp),
+    val categoryDescription: TextStyle = Regular.copy(fontSize = 13.sp, lineHeight = 1.4.em),
+    val tag: TextStyle = SemiBold.copy(fontSize = 12.sp),
 )

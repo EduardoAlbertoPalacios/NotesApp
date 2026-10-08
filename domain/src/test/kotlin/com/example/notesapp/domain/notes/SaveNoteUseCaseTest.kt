@@ -53,6 +53,7 @@ class SaveNoteUseCaseTest {
         content = content,
         color = NoteColor.AQUA,
         isPinned = false,
+        category = null,
         updatedAt = updatedAt,
     )
 

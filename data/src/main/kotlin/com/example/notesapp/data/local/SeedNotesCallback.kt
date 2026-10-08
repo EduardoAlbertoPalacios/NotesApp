@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import java.util.concurrent.TimeUnit
 
@@ -25,12 +26,14 @@ internal class SeedNotesCallback(
         put("color", color)
         put("is_pinned", isPinned)
         put("updated_at", updatedAt)
+        put("category", category)
     }
 
     companion object {
         fun seedNotes(now: Long): List<NoteEntity> = listOf(
             seed(
                 title = "Reunión de equipo",
+                category = NoteCategory.WORK,
                 content = "Nuevo lanzamiento:\n• Inicio más sencillo\n• Textos claros\n• Prototipo el viernes",
                 color = NoteColor.AQUA,
                 isPinned = true,
@@ -38,24 +41,28 @@ internal class SeedNotesCallback(
             ),
             seed(
                 title = "La compra",
+                category = NoteCategory.PERSONAL,
                 content = "☐  Tomates\n☐  Leche de avena\n☑  Pan integral\n☐  Café",
                 color = NoteColor.ROSE,
                 updatedAt = now - TimeUnit.MINUTES.toMillis(85),
             ),
             seed(
                 title = "Ideas sueltas",
+                category = NoteCategory.PERSONAL,
                 content = "Un café, una libreta y tiempo para crear.",
                 color = NoteColor.SAND,
                 updatedAt = now - TimeUnit.DAYS.toMillis(1),
             ),
             seed(
                 title = "Escapada",
+                category = NoteCategory.PERSONAL,
                 content = "La sierra nos espera.\n\nLlevar la cámara y desconectar.",
                 color = NoteColor.LAVENDER,
                 updatedAt = now - TimeUnit.DAYS.toMillis(1) - TimeUnit.HOURS.toMillis(1),
             ),
             seed(
                 title = "Para leer",
+                category = NoteCategory.PERSONAL,
                 content = "Hábitos atómicos",
                 color = NoteColor.MINT,
                 updatedAt = now - TimeUnit.DAYS.toMillis(2),
@@ -74,12 +81,14 @@ internal class SeedNotesCallback(
             color: NoteColor,
             updatedAt: Long,
             isPinned: Boolean = false,
+            category: NoteCategory? = null,
         ) = NoteEntity(
             title = title,
             content = content,
             color = color.name,
             isPinned = isPinned,
             updatedAt = updatedAt,
+            category = category?.name,
         )
     }
 }

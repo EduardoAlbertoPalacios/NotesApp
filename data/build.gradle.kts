@@ -19,6 +19,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    sourceSets {
+        // MigrationTestHelper lee los esquemas exportados desde los assets de androidTest.
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
+    }
     testOptions {
         // Permite crear SQLiteException (stub de android.jar) en pruebas JVM.
         unitTests.isReturnDefaultValues = true
@@ -44,6 +48,7 @@ dependencies {
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.turbine)
 }

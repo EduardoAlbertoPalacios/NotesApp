@@ -1,11 +1,14 @@
 package com.example.notesapp.presentation.notes.editor
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,6 +17,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -38,18 +44,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.asText
@@ -66,6 +76,8 @@ object NoteEditorTestTags {
     const val SAVE_STATUS = "note_editor_save_status"
     const val LOADING = "note_editor_loading"
     const val LOAD_ERROR = "note_editor_load_error"
+    const val CATEGORY_TAG = "note_editor_category_tag"
+    const val CATEGORY_OPTION = "note_editor_category_"
 }
 
 @Composable
@@ -217,13 +229,8 @@ private fun NoteContent(
             ),
         verticalArrangement = Arrangement.spacedBy(spacing.screen),
     ) {
-        state.date?.let { date ->
-            Text(
-                text = date.asText(),
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.onSurfaceVariant,
-            )
-        }
+        NoteStatusRow(category = state.category, date = state.date)
+        CategorySection(selected = state.category, onIntent = onIntent)
         EditorTextField(
             value = state.title,
             onValueChange = { onIntent(NoteEditorIntent.TitleChanged(it)) },
@@ -241,6 +248,132 @@ private fun NoteContent(
             modifier = Modifier.testTag(NoteEditorTestTags.CONTENT),
         )
     }
+}
+
+/** Etiqueta de categoría y fecha de edición; no se muestra si la nota no tiene ninguna de las dos. */
+@Composable
+private fun NoteStatusRow(
+    category: NoteCategory?,
+    date: NoteDateLabel?,
+    modifier: Modifier = Modifier,
+) {
+    if (category == null && date == null) return
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(NotesTheme.spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (category != null) {
+            Text(
+                text = stringResource(category.labelRes()),
+                modifier = Modifier
+                    .background(
+                        if (category == NoteCategory.WORK) colors.primary else colors.secondary,
+                        RoundedCornerShape(NotesTheme.radii.tag)
+                    )
+                    .padding(horizontal = NotesTheme.spacing.sm, vertical = NotesTheme.spacing.xs)
+                    .testTag(NoteEditorTestTags.CATEGORY_TAG),
+                style = NotesTheme.typography.tag,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
+        if (date != null) {
+            Text(
+                text = date.asText(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategorySection(
+    selected: NoteCategory?,
+    onIntent: (NoteEditorIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = NotesTheme.spacing
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(spacing.m),
+    ) {
+        Text(
+            text = stringResource(R.string.note_editor_category_title),
+            style = MaterialTheme.typography.titleLarge,
+            color = colors.onBackground,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.m),
+        ) {
+            NoteCategory.entries.forEach { category ->
+                CategoryOption(
+                    category = category,
+                    isSelected = category == selected,
+                    color = if (selected == NoteCategory.WORK) colors.primary else colors.secondary,
+                    onClick = { onIntent(NoteEditorIntent.CategoryClicked(category)) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryOption(
+    category: NoteCategory,
+    isSelected: Boolean,
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(NotesTheme.radii.card)
+    Column(
+        modifier = modifier
+            .clip(shape)
+            .background(if (isSelected) color else colors.surfaceContainer)
+            .then(
+                if (isSelected) {
+                    Modifier
+                } else {
+                    Modifier.border(NotesTheme.sizes.border, colors.outlineVariant, shape)
+                },
+            )
+            .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
+            .padding(NotesTheme.spacing.m)
+            .testTag(NoteEditorTestTags.CATEGORY_OPTION + category.name),
+        verticalArrangement = Arrangement.spacedBy(NotesTheme.spacing.xxs),
+    ) {
+        Text(
+            text = stringResource(category.labelRes()),
+            style = NotesTheme.typography.categoryTitle,
+            color = if (isSelected) colors.onPrimary else colors.onBackground,
+        )
+        Text(
+            text = stringResource(category.descriptionRes()),
+            style = NotesTheme.typography.categoryDescription,
+            color = if (isSelected) colors.onPrimary else colors.onSurfaceVariant,
+        )
+    }
+}
+
+private fun NoteCategory.labelRes(): Int = when (this) {
+    NoteCategory.WORK -> R.string.note_category_work
+    NoteCategory.PERSONAL -> R.string.note_category_personal
+}
+
+private fun NoteCategory.descriptionRes(): Int = when (this) {
+    NoteCategory.WORK -> R.string.note_category_work_description
+    NoteCategory.PERSONAL -> R.string.note_category_personal_description
 }
 
 @Composable
@@ -371,6 +504,7 @@ private fun NoteEditorScreenPreview() {
                 content = "Ideas y próximos pasos para el nuevo lanzamiento. Menos ruido, más foco.\n\n" +
                     "Una idea para recordar: dejar espacio para lo importante.",
                 isPinned = true,
+                category = NoteCategory.WORK,
                 date = NoteDateLabel.Today("9:38"),
                 saveStatus = SaveStatus.Saved,
             ),

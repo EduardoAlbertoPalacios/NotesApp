@@ -9,6 +9,7 @@ data class NoteListUiState(
     val isLoading: Boolean = true,
     val notes: List<NoteItemUi> = emptyList(),
     val hasError: Boolean = false,
+    val selectedFilter: NoteFilter = NoteFilter.ALL,
 )
 
 @Immutable

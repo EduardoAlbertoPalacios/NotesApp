@@ -27,10 +27,12 @@ data class Sizes(
     val chipHeight: Dp = 34.dp,
     val fabHeight: Dp = 60.dp,
     val topBarHeight: Dp = 64.dp,
+    val border: Dp = 1.dp,
 )
 
 @Immutable
 data class Radii(
+    val tag: Dp = 8.dp,
     val card: Dp = 16.dp,
     val fab: Dp = 20.dp,
     val pill: Dp = 28.dp,

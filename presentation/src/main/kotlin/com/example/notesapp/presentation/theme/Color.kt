@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 
 internal val Black = Color(0xFF080808)
 internal val Graphite = Color(0xFF1C1C1E)
+internal val Iron = Color(0xFF2A2A2E)
 internal val Snow = Color(0xFFF7F7F8)
 internal val Ash = Color(0xFF929296)
 internal val Aqua = Color(0xFF94E3EB)

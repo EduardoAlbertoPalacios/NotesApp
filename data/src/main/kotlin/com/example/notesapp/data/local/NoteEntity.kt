@@ -12,4 +12,6 @@ internal data class NoteEntity(
     val color: String,
     @ColumnInfo(name = "is_pinned") val isPinned: Boolean,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    /** Nombre de `NoteCategory`, o nulo si la nota no tiene categoría. Desde la versión 2. */
+    val category: String? = null,
 )

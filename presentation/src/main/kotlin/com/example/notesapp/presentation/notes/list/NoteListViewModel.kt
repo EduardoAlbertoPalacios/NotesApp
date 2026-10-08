@@ -8,11 +8,13 @@ import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -28,6 +30,8 @@ class NoteListViewModel @Inject constructor(
     private val _state = MutableStateFlow(NoteListUiState())
     val state: StateFlow<NoteListUiState> = _state.asStateFlow()
 
+    private val selectedFilter = MutableStateFlow(NoteFilter.ALL)
+
     private val _effects = Channel<NoteListEffect>(Channel.BUFFERED)
     val effects: Flow<NoteListEffect> = _effects.receiveAsFlow()
 
@@ -38,13 +42,20 @@ class NoteListViewModel @Inject constructor(
     fun onIntent(intent: NoteListIntent) {
         when (intent) {
             is NoteListIntent.NoteClicked -> send(NoteListEffect.NavigateToNote(intent.id))
-            NoteListIntent.CreateNoteClicked -> send(NoteListEffect.NavigateToNote(null))
+            NoteListIntent.CreateNoteClicked ->
+                send(NoteListEffect.NavigateToNote(id = null, category = selectedFilter.value.category))
             NoteListIntent.SettingsClicked -> send(NoteListEffect.NavigateToSettings)
+            is NoteListIntent.FilterSelected -> {
+                selectedFilter.value = intent.filter
+                _state.update { it.copy(selectedFilter = intent.filter) }
+            }
         }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private fun observeNotes() {
-        getNotes()
+        selectedFilter
+            .flatMapLatest { filter -> getNotes(filter.category) }
             .onEach { result ->
                 when (result) {
                     is AppResult.Success -> _state.update {
