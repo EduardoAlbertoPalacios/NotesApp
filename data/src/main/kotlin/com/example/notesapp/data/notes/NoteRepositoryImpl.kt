@@ -3,8 +3,10 @@ package com.example.notesapp.data.notes
 import android.database.SQLException
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.data.local.NoteDao
+import com.example.notesapp.data.local.NoteImageEntity
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteError
+import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
@@ -40,6 +42,18 @@ internal class NoteRepositoryImpl @Inject constructor(
 
     override suspend fun deleteNote(id: Long): AppResult<Unit, NoteError> = storage {
         noteDao.deleteById(id)
+        AppResult.Success(Unit)
+    }
+
+    override suspend fun addImages(noteId: Long, paths: List<String>): AppResult<List<NoteImage>, NoteError> =
+        storage {
+            val entities = paths.map { NoteImageEntity(noteId = noteId, path = it) }
+            val ids = noteDao.insertImages(entities)
+            AppResult.Success(entities.zip(ids) { entity, id -> entity.copy(id = id).toDomain() })
+        }
+
+    override suspend fun removeImage(imageId: Long): AppResult<Unit, NoteError> = storage {
+        noteDao.deleteImage(imageId)
         AppResult.Success(Unit)
     }
 

@@ -7,6 +7,7 @@ import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
+import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.presentation.MainDispatcherRule
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
@@ -30,6 +31,9 @@ class NoteListViewModelTest {
         override suspend fun getNote(id: Long): AppResult<Note, NoteError> = AppResult.Error(NoteError.NotFound)
         override suspend fun saveNote(note: Note): AppResult<Long, NoteError> = AppResult.Error(NoteError.Storage)
         override suspend fun deleteNote(id: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
+        override suspend fun addImages(noteId: Long, paths: List<String>): AppResult<List<NoteImage>, NoteError> =
+            AppResult.Error(NoteError.Storage)
+        override suspend fun removeImage(imageId: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
     }
     private val now = 1_700_000_000_000L
     private val dateFormatter = NoteDateFormatter(
@@ -210,6 +214,38 @@ class NoteListViewModelTest {
         }
     }
 
+    @Test
+    fun `given note with images when loaded then image path is its first image`() = runTest {
+        val viewModel = createViewModel()
+
+        notes.emit(
+            AppResult.Success(
+                listOf(note(id = 1, images = listOf(NoteImage(10, "/primera.jpg"), NoteImage(11, "/segunda.jpg")))),
+            ),
+        )
+
+        assertEquals("/primera.jpg", viewModel.state.value.notes.single().imagePath)
+    }
+
+    @Test
+    fun `given note without images when loaded then image path is null`() = runTest {
+        val viewModel = createViewModel()
+
+        notes.emit(AppResult.Success(listOf(note(id = 1))))
+
+        assertEquals(null, viewModel.state.value.notes.single().imagePath)
+    }
+
+    @Test
+    fun `given note gains an image when repository updates then image path appears`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(listOf(note(id = 1))))
+
+        notes.emit(AppResult.Success(listOf(note(id = 1, images = listOf(NoteImage(10, "/nueva.jpg"))))))
+
+        assertEquals("/nueva.jpg", viewModel.state.value.notes.single().imagePath)
+    }
+
     private val mixedNotes
         get() = listOf(
             note(id = 1, updatedAt = now - 1 * DAY, category = NoteCategory.WORK),
@@ -222,6 +258,7 @@ class NoteListViewModelTest {
         isPinned: Boolean = false,
         updatedAt: Long = now,
         category: NoteCategory? = null,
+        images: List<NoteImage> = emptyList(),
     ) = Note(
         id = id,
         title = "Nota $id",
@@ -230,6 +267,7 @@ class NoteListViewModelTest {
         isPinned = isPinned,
         category = category,
         updatedAt = updatedAt,
+        images = images,
     )
 
     private companion object {
