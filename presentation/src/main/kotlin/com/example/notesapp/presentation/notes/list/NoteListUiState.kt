@@ -20,4 +20,6 @@ data class NoteItemUi(
     val color: NoteColor,
     val isPinned: Boolean,
     val date: NoteDateLabel,
+    /** Ruta de la primera imagen de la nota, para la miniatura; nula si no tiene. */
+    val imagePath: String? = null,
 )

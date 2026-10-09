@@ -10,8 +10,9 @@ data class Note(
     val category: NoteCategory?,
     /** Fecha de la última edición, en milisegundos desde epoch. */
     val updatedAt: Long,
+    val images: List<NoteImage> = emptyList(),
 ) {
-    val isBlank: Boolean get() = title.isBlank() && content.isBlank()
+    val isBlank: Boolean get() = title.isBlank() && content.isBlank() && images.isEmpty()
 
     companion object {
         /** Id de una nota que todavía no se ha guardado. */

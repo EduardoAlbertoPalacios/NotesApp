@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -27,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -38,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,6 +52,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -59,12 +63,17 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import coil3.compose.AsyncImage
 import com.example.notesapp.domain.notes.NoteCategory
+import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.asText
+import com.example.notesapp.presentation.notes.common.toContainerColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
+import java.io.File
 
 object NoteEditorTestTags {
     const val BACK = "note_editor_back"
@@ -78,6 +87,9 @@ object NoteEditorTestTags {
     const val LOAD_ERROR = "note_editor_load_error"
     const val CATEGORY_TAG = "note_editor_category_tag"
     const val CATEGORY_OPTION = "note_editor_category_"
+    const val TOOLBAR_IMAGE = "note_editor_toolbar_image"
+    const val IMAGE = "note_editor_image_"
+    const val REMOVE_IMAGE = "note_editor_remove_image_"
 }
 
 @Composable
@@ -106,6 +118,7 @@ fun NoteEditorScreen(
                 else -> {
                     NoteContent(state = state, onIntent = onIntent, modifier = Modifier.weight(1f))
                     SaveStatusRow(status = state.saveStatus)
+                    EditorToolbar(color = state.color, onIntent = onIntent)
                 }
             }
         }
@@ -240,6 +253,9 @@ private fun NoteContent(
                 .focusRequester(titleFocusRequester)
                 .testTag(NoteEditorTestTags.TITLE),
         )
+        if (state.images.isNotEmpty()) {
+            NoteImages(images = state.images, onIntent = onIntent)
+        }
         EditorTextField(
             value = state.content,
             onValueChange = { onIntent(NoteEditorIntent.ContentChanged(it)) },
@@ -403,6 +419,121 @@ private fun EditorTextField(
             }
         },
     )
+}
+
+@Composable
+private fun NoteImages(
+    images: List<NoteImage>,
+    onIntent: (NoteEditorIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(NotesTheme.spacing.m),
+    ) {
+        images.forEach { image ->
+            key(image.id) {
+                NoteImageItem(image = image, onRemove = { onIntent(NoteEditorIntent.RemoveImageClicked(image)) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoteImageItem(
+    image: NoteImage,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        AsyncImage(
+            model = File(image.path),
+            contentDescription = stringResource(R.string.note_editor_image),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(NotesTheme.radii.card))
+                .testTag(NoteEditorTestTags.IMAGE + image.id),
+            contentScale = ContentScale.FillWidth,
+        )
+        FilledIconButton(
+            onClick = onRemove,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(NotesTheme.spacing.s)
+                .size(NotesTheme.sizes.imageAction)
+                .testTag(NoteEditorTestTags.REMOVE_IMAGE + image.id),
+            shape = CircleShape,
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                contentColor = MaterialTheme.colorScheme.onBackground,
+            ),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_close),
+                contentDescription = stringResource(R.string.note_editor_image_remove),
+            )
+        }
+    }
+}
+
+/** Barra de edición del diseño. Por ahora solo "Agregar imagen" funciona; el resto se muestra deshabilitado. */
+@Composable
+private fun EditorToolbar(
+    color: NoteColor,
+    onIntent: (NoteEditorIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = NotesTheme.spacing.l, end = NotesTheme.spacing.l, bottom = NotesTheme.spacing.m)
+            .height(NotesTheme.sizes.toolbarHeight)
+            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(NotesTheme.radii.toolbar))
+            .padding(horizontal = NotesTheme.spacing.s),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ToolbarButton(R.drawable.ic_type, R.string.note_editor_toolbar_text)
+        ToolbarButton(R.drawable.ic_list_todo, R.string.note_editor_toolbar_checklist)
+        ToolbarButton(
+            iconRes = R.drawable.ic_image,
+            labelRes = R.string.note_editor_toolbar_image,
+            onClick = { onIntent(NoteEditorIntent.AddImageClicked) },
+            modifier = Modifier.testTag(NoteEditorTestTags.TOOLBAR_IMAGE),
+        )
+        ToolbarButton(R.drawable.ic_undo, R.string.note_editor_toolbar_undo)
+        val colorLabel = stringResource(R.string.note_editor_toolbar_color)
+        Box(
+            modifier = Modifier
+                .size(NotesTheme.sizes.iconAction)
+                .semantics { contentDescription = colorLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(NotesTheme.sizes.colorDot)
+                    .background(color.toContainerColor(), CircleShape),
+            )
+        }
+    }
+}
+
+/** Sin [onClick] el botón se muestra deshabilitado: la función todavía no existe. */
+@Composable
+private fun ToolbarButton(
+    iconRes: Int,
+    labelRes: Int,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    IconButton(
+        onClick = { onClick?.invoke() },
+        modifier = modifier.size(NotesTheme.sizes.iconAction),
+        enabled = onClick != null,
+        colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
+    ) {
+        Icon(painter = painterResource(iconRes), contentDescription = stringResource(labelRes))
+    }
 }
 
 @Composable

@@ -36,6 +36,16 @@ class SaveNoteUseCaseTest {
     }
 
     @Test
+    fun `given note without text but with images when saving then stores it`() = runTest {
+        val withImage = note(id = 7, title = "", content = "").copy(images = listOf(NoteImage(id = 1, path = "/a.jpg")))
+
+        val result = saveNote(withImage)
+
+        assertEquals(AppResult.Success(withImage.copy(updatedAt = NOW)), result)
+        assertEquals(listOf(withImage.copy(updatedAt = NOW)), repository.saved)
+    }
+
+    @Test
     fun `given storage failure when saving then returns the error`() = runTest {
         repository.failure = NoteError.Storage
 

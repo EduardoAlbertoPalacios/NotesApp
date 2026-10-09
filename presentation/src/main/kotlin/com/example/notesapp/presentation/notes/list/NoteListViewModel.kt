@@ -74,6 +74,7 @@ class NoteListViewModel @Inject constructor(
         color = color,
         isPinned = isPinned,
         date = dateFormatter.format(updatedAt),
+        imagePath = images.firstOrNull()?.path,
     )
 
     private fun send(effect: NoteListEffect) {

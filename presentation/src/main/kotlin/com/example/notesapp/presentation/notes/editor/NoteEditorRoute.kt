@@ -1,6 +1,9 @@
 package com.example.notesapp.presentation.notes.editor
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +26,11 @@ fun NoteEditorRoute(
     val context = LocalContext.current
     val currentOnNavigateBack by rememberUpdatedState(onNavigateBack)
 
+    // Selector de fotos del sistema: no requiere permisos de almacenamiento.
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(uris.map { it.toString() }))
+    }
+
     // El gesto de volver también guarda los cambios pendientes antes de salir.
     BackHandler { viewModel.onIntent(NoteEditorIntent.BackClicked) }
 
@@ -30,6 +38,9 @@ fun NoteEditorRoute(
         viewModel.effects.collect { effect ->
             when (effect) {
                 NoteEditorEffect.NavigateBack -> currentOnNavigateBack()
+                NoteEditorEffect.OpenImagePicker -> imagePicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
                 is NoteEditorEffect.ShowMessage ->
                     snackbarHostState.showSnackbar(context.getString(effect.messageRes))
             }
