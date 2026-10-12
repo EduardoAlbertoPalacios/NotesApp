@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -51,12 +52,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import coil3.compose.AsyncImage
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.asText
+import com.example.notesapp.presentation.notes.common.toContainerColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
+import java.io.File
 
 object NoteListTestTags {
     const val NOTE_GRID = "note_list_grid"
@@ -314,37 +318,49 @@ private fun NoteCard(
         color = note.color.toContainerColor(),
         contentColor = noteColors.content,
     ) {
-        Column(
-            modifier = Modifier.padding(spacing.l),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(spacing.s)) {
+        Column {
+            if (note.imagePath != null) {
+                AsyncImage(
+                    model = File(note.imagePath),
+                    contentDescription = stringResource(R.string.note_list_image),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(NotesTheme.sizes.listImageHeight),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+            Column(
+                modifier = Modifier.padding(spacing.l),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.s)) {
+                    Text(
+                        text = note.title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = TITLE_MAX_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (note.isPinned) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_pin),
+                            contentDescription = stringResource(R.string.note_list_pinned),
+                        )
+                    }
+                }
                 Text(
-                    text = note.title,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = TITLE_MAX_LINES,
+                    text = note.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = CONTENT_MAX_LINES,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (note.isPinned) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_pin),
-                        contentDescription = stringResource(R.string.note_list_pinned),
-                    )
-                }
+                Text(
+                    text = note.date.asText(),
+                    modifier = Modifier.padding(top = spacing.xxs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = noteColors.metadata,
+                )
             }
-            Text(
-                text = note.content,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = CONTENT_MAX_LINES,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = note.date.asText(),
-                modifier = Modifier.padding(top = spacing.xxs),
-                style = MaterialTheme.typography.labelSmall,
-                color = noteColors.metadata,
-            )
         }
     }
 }
@@ -421,19 +437,6 @@ private fun NoteFilter.emptyMessageRes(): Int = when (this) {
     NoteFilter.ALL -> R.string.note_list_empty
     NoteFilter.WORK -> R.string.note_list_empty_work
     NoteFilter.PERSONAL -> R.string.note_list_empty_personal
-}
-
-@Composable
-private fun NoteColor.toContainerColor(): Color {
-    val colors = NotesTheme.noteColors
-    return when (this) {
-        NoteColor.AQUA -> colors.aqua
-        NoteColor.SAND -> colors.sand
-        NoteColor.MINT -> colors.mint
-        NoteColor.ROSE -> colors.rose
-        NoteColor.LAVENDER -> colors.lavender
-        NoteColor.PEACH -> colors.peach
-    }
 }
 
 private const val NOTE_COLUMNS = 2

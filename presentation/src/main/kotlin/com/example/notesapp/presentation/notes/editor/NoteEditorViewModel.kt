@@ -4,12 +4,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.domain.notes.AddNoteImagesUseCase
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
 import com.example.notesapp.domain.notes.GetNoteUseCase
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
+import com.example.notesapp.domain.notes.NoteImage
+import com.example.notesapp.domain.notes.RemoveNoteImageUseCase
 import com.example.notesapp.domain.notes.SaveNoteUseCase
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
@@ -36,6 +39,8 @@ class NoteEditorViewModel @Inject constructor(
     private val getNote: GetNoteUseCase,
     private val saveNote: SaveNoteUseCase,
     private val deleteNote: DeleteNoteUseCase,
+    private val addNoteImages: AddNoteImagesUseCase,
+    private val removeNoteImage: RemoveNoteImageUseCase,
     private val dateFormatter: NoteDateFormatter,
 ) : ViewModel() {
 
@@ -76,6 +81,9 @@ class NoteEditorViewModel @Inject constructor(
             is NoteEditorIntent.TitleChanged -> edit { it.copy(title = intent.title) }
             is NoteEditorIntent.ContentChanged -> edit { it.copy(content = intent.content) }
             NoteEditorIntent.PinClicked -> saveNow { it.copy(isPinned = !it.isPinned) }
+            NoteEditorIntent.AddImageClicked -> send(NoteEditorEffect.OpenImagePicker)
+            is NoteEditorIntent.ImagesPicked -> addImages(intent.uris)
+            is NoteEditorIntent.RemoveImageClicked -> removeImage(intent.image)
             is NoteEditorIntent.CategoryClicked -> saveNow {
                 it.copy(category = intent.category.takeIf { category -> category != it.category })
             }
@@ -99,6 +107,8 @@ class NoteEditorViewModel @Inject constructor(
                             content = note.content,
                             isPinned = note.isPinned,
                             category = note.category,
+                            color = note.color,
+                            images = note.images,
                             date = dateFormatter.format(note.updatedAt),
                         )
                     }
@@ -162,12 +172,67 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
+    private fun addImages(uris: List<String>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            saveMutex.withLock {
+                val current = _state.value
+                // El borrador lleva el texto actual, que se guarda junto con las imágenes.
+                val draft = note.copy(
+                    title = current.title,
+                    content = current.content,
+                    isPinned = current.isPinned,
+                    category = current.category,
+                )
+                when (val result = addNoteImages(draft, uris)) {
+                    is AppResult.Success -> {
+                        note = result.data.note
+                        if (result.data.failedCount > 0) {
+                            send(NoteEditorEffect.ShowMessage(R.string.note_editor_image_error))
+                        }
+                        // Si hubo ediciones mientras se copiaban las imágenes, el autoguardado las guardará.
+                        hasPendingChanges = _state.value.run {
+                            title != note.title || content != note.content || isPinned != note.isPinned ||
+                                category != note.category
+                        }
+                        _state.update {
+                            it.copy(
+                                images = note.images,
+                                date = dateFormatter.format(note.updatedAt),
+                                saveStatus = SaveStatus.Saved,
+                            )
+                        }
+                    }
+                    is AppResult.Error -> send(NoteEditorEffect.ShowMessage(R.string.note_editor_image_error))
+                }
+            }
+        }
+    }
+
+    private fun removeImage(image: NoteImage) {
+        viewModelScope.launch {
+            // Mismo candado que los guardados: evita pisar `note` con un guardado o una carga de imágenes en curso.
+            saveMutex.withLock {
+                when (removeNoteImage(image)) {
+                    is AppResult.Success -> {
+                        note = note.copy(images = note.images - image)
+                        _state.update { it.copy(images = note.images) }
+                    }
+                    is AppResult.Error -> send(NoteEditorEffect.ShowMessage(R.string.note_editor_image_remove_error))
+                }
+            }
+        }
+    }
+
     private fun leave() {
         viewModelScope.launch {
             autosaveJob?.cancel()
             autosaveJob?.join()
             save()
-            if (!hasPendingChanges) send(NoteEditorEffect.NavigateBack)
+            if (hasPendingChanges) return@launch
+            // Una nota creada al agregar una imagen queda vacía si luego se quitan todas: no se conserva.
+            if (note.id != Note.NEW_ID && note.isBlank) deleteNote(note.id)
+            send(NoteEditorEffect.NavigateBack)
         }
     }
 
@@ -190,7 +255,7 @@ class NoteEditorViewModel @Inject constructor(
 
     private fun NoteError.toLoadError(): LoadError = when (this) {
         NoteError.NotFound -> LoadError.NotFound
-        NoteError.Storage, NoteError.EmptyNote -> LoadError.Storage
+        NoteError.Storage, NoteError.EmptyNote, NoteError.ImageUnavailable -> LoadError.Storage
     }
 
     private fun send(effect: NoteEditorEffect) {

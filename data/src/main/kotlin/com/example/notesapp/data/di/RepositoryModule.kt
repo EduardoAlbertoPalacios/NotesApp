@@ -1,6 +1,8 @@
 package com.example.notesapp.data.di
 
+import com.example.notesapp.data.images.ImageStorageImpl
 import com.example.notesapp.data.notes.NoteRepositoryImpl
+import com.example.notesapp.domain.notes.ImageStorage
 import com.example.notesapp.domain.notes.NoteRepository
 import dagger.Binds
 import dagger.Module
@@ -13,4 +15,7 @@ internal abstract class RepositoryModule {
 
     @Binds
     abstract fun bindNoteRepository(impl: NoteRepositoryImpl): NoteRepository
+
+    @Binds
+    abstract fun bindImageStorage(impl: ImageStorageImpl): ImageStorage
 }

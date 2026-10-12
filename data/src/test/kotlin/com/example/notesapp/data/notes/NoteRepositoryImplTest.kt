@@ -1,13 +1,16 @@
 package com.example.notesapp.data.notes
 
 import android.database.sqlite.SQLiteException
+import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.data.local.NoteEntity
+import com.example.notesapp.data.local.NoteImageEntity
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
+import com.example.notesapp.domain.notes.NoteImage
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -140,6 +143,78 @@ class NoteRepositoryImplTest {
             assertEquals(listOf(NoteCategory.PERSONAL, null), notes.map { it.category })
         }
     }
+
+    @Test
+    fun `given note when adding images then stores them and returns them with generated ids`() = runTest {
+        dao.insertAll(listOf(entity))
+
+        val result = repository.addImages(1, listOf("/a.jpg", "/b.jpg"))
+
+        assertEquals(AppResult.Success(listOf(NoteImage(1, "/a.jpg"), NoteImage(2, "/b.jpg"))), result)
+        assertEquals(
+            listOf(NoteImageEntity(id = 1, noteId = 1, path = "/a.jpg"), NoteImageEntity(id = 2, noteId = 1, path = "/b.jpg")),
+            dao.storedImages,
+        )
+    }
+
+    @Test
+    fun `given note with images when getting by id then returns them in domain`() = runTest {
+        dao.insertAll(listOf(entity))
+        repository.addImages(1, listOf("/a.jpg"))
+
+        assertEquals(
+            AppResult.Success(entity.toDomain(images = listOf(NoteImage(1, "/a.jpg")))),
+            repository.getNote(1),
+        )
+    }
+
+    @Test
+    fun `given observed notes when images are added and removed then emits each change`() = runTest {
+        dao.insertAll(listOf(entity))
+
+        repository.observeNotes().test {
+            assertEquals(emptyList<NoteImage>(), awaitImages())
+
+            repository.addImages(1, listOf("/a.jpg"))
+            assertEquals(listOf(NoteImage(1, "/a.jpg")), awaitImages())
+
+            repository.removeImage(1)
+            assertEquals(emptyList<NoteImage>(), awaitImages())
+        }
+    }
+
+    @Test
+    fun `given image when removing then deletes only that image`() = runTest {
+        dao.insertAll(listOf(entity))
+        repository.addImages(1, listOf("/a.jpg", "/b.jpg"))
+
+        val result = repository.removeImage(1)
+
+        assertEquals(AppResult.Success(Unit), result)
+        assertEquals(listOf("/b.jpg"), dao.storedImages.map { it.path })
+    }
+
+    @Test
+    fun `given database failure when adding or removing images then returns storage error`() = runTest {
+        dao.failure = SQLiteException("disk full")
+
+        assertEquals(AppResult.Error(NoteError.Storage), repository.addImages(1, listOf("/a.jpg")))
+        assertEquals(AppResult.Error(NoteError.Storage), repository.removeImage(1))
+    }
+
+    @Test
+    fun `given note with images when saving it then keeps its images`() = runTest {
+        dao.insertAll(listOf(entity))
+        repository.addImages(1, listOf("/a.jpg"))
+        val stored = (repository.getNote(1) as AppResult.Success).data
+
+        repository.saveNote(stored.copy(title = "Editada"))
+
+        assertEquals(listOf("/a.jpg"), dao.storedImages.map { it.path })
+    }
+
+    private suspend fun ReceiveTurbine<AppResult<List<Note>, NoteError>>.awaitImages() =
+        (awaitItem() as AppResult.Success).data.single().images
 
     private fun note(id: Long, title: String, category: NoteCategory? = null) = Note(
         id = id,

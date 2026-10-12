@@ -3,10 +3,11 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado actual
-- Existen los 5 módulos (`:app`, `:presentation`, `:domain`, `:data`, `:common`) con Hilt, Room (v2, esquemas en `data/schemas`) y Navigation Compose.
+- Existen los 5 módulos (`:app`, `:presentation`, `:domain`, `:data`, `:common`) con Hilt, Room (v3, esquemas en `data/schemas`) y Navigation Compose.
 - Pantalla **Mis notas** (`presentation/notes/list`) implementada desde Figma (`JyeMmyDAEO1Y52QnwKwgGH`, nodo `4:1583`).
 - **Editor** (`presentation/notes/editor`, Figma `4:1656`): crear, editar (solo texto plano), fijar y eliminar.
 - **Categorías** Trabajo / Personal: se eligen en el editor (sección "Categoría", Figma `14:4`) y filtran el listado.
+- **Imágenes** (rama `feat/note-images`): varias por nota, desde el botón Imagen de la barra de edición.
 - Pendiente en Figma: selector de color (`4:1710`), Ajustes (`4:1794`).
 
 ## Decisiones (y por qué)
@@ -24,6 +25,9 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Editor: autoguardado 500 ms tras dejar de escribir y al salir; nota nueva vacía no se crea (`SaveNoteUseCase` → `EmptyNote`). Vaciar una nota existente conserva su última versión.
 - Editor: barra inferior, etiqueta de categoría y Compartir ocultos hasta tener esas funciones. Nota nueva = color AQUA.
 - Eliminar: menú ⋮ + diálogo de confirmación (sin deshacer).
+- Imágenes: selector de fotos del sistema (sin permisos); se copian a `filesDir/note_images` porque el acceso a la original es temporal. Tabla `note_images` (FK con CASCADE), Room v2→v3 automática. Borrar nota/imagen borra también el archivo. Agregar imagen actualiza la fecha de edición.
+- Barra de edición del Figma visible completa; solo "Agregar imagen" funciona, el resto deshabilitado.
+- Coil 3.3.0: última versión compilada con Kotlin 2.2 (3.5+ exige Kotlin 2.4). Subir Kotlin antes de actualizar Coil.
 - `TimeProvider` en `:common` para fijar la fecha de edición en pruebas.
 
 ## Aprendizajes y errores a evitar
@@ -31,6 +35,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - AGP 9 trae Kotlin integrado: los módulos Android no aplican `kotlin-android`; los JVM puros usan `kotlin-jvm`.
 - Pruebas JVM que crean `SQLiteException` necesitan `unitTests.isReturnDefaultValues = true` (`:data`).
 - Pruebas de UI de campos de texto: usar un estado que se actualice con los intents; con estado fijo el campo reenvía el valor viejo al perder el foco.
+- Scripts de reemplazo: verificar siempre que el texto se encontró (un reemplazo silencioso dejó sin guardar la categoría).
 - Pruebas: las escribe el agente `test-writer` (regla en `working-method.md`).
 - `LazyVerticalStaggeredGrid` reparte por columna más corta: el orden visual difiere del mock de Figma (columnas fijas).
 

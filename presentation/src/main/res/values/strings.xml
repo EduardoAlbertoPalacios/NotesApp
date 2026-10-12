@@ -41,5 +41,15 @@
     <string name="note_editor_not_found">Esta nota ya no existe.</string>
     <string name="note_editor_load_error">No pudimos abrir la nota. Inténtalo de nuevo más tarde.</string>
     <string name="note_editor_save_error">No pudimos guardar los cambios. Inténtalo de nuevo.</string>
+    <string name="note_editor_toolbar_text">Formato de texto</string>
+    <string name="note_editor_toolbar_checklist">Lista de tareas</string>
+    <string name="note_editor_toolbar_image">Agregar imagen</string>
+    <string name="note_editor_toolbar_undo">Deshacer</string>
+    <string name="note_editor_toolbar_color">Color de la nota</string>
+    <string name="note_editor_image">Imagen de la nota</string>
+    <string name="note_editor_image_remove">Quitar imagen</string>
+    <string name="note_editor_image_error">No pudimos agregar la imagen. Inténtalo con otra.</string>
+    <string name="note_editor_image_remove_error">No pudimos quitar la imagen. Inténtalo de nuevo.</string>
+    <string name="note_list_image">Imagen de la nota</string>
     <string name="note_editor_delete_error">No pudimos eliminar la nota. Inténtalo de nuevo.</string>
 </resources>

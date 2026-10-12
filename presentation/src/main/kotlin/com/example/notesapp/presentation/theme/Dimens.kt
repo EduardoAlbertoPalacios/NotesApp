@@ -28,6 +28,10 @@ data class Sizes(
     val fabHeight: Dp = 60.dp,
     val topBarHeight: Dp = 64.dp,
     val border: Dp = 1.dp,
+    val toolbarHeight: Dp = 64.dp,
+    val colorDot: Dp = 24.dp,
+    val imageAction: Dp = 36.dp,
+    val listImageHeight: Dp = 120.dp,
 )
 
 @Immutable
@@ -36,4 +40,5 @@ data class Radii(
     val card: Dp = 16.dp,
     val fab: Dp = 20.dp,
     val pill: Dp = 28.dp,
+    val toolbar: Dp = 24.dp,
 )
