@@ -90,7 +90,7 @@ Cada pantalla vive en su propio paquete (`notes/list`, `notes/detail`, ...) con:
 - **Módulos Hilt:** `DatabaseModule` (`@Provides`) y `RepositoryModule` (`@Binds`), instalados en `SingletonComponent`.
 - Exporta el esquema de Room (`exportSchema = true`) y escribe una `Migration` en cada cambio de versión.
 
-> **Nota:** no uses `fallbackToDestructiveMigration` salvo en desarrollo temprano.
+> **Nota:** `fallbackToDestructiveMigration` está prohibido (ver `docs/constitution.md`).
 
 ### Common
 
