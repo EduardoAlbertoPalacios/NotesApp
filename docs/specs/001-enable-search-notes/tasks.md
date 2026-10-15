@@ -1,6 +1,6 @@
 # Tareas 001 — Buscar en mis notas
 
-> **Estado:** pendiente · **Fecha:** 2026-10-14 · **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
+> **Estado:** completada · **Fecha:** 2026-10-14 · **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 
 Tareas en orden de dependencia: cada una solo necesita las anteriores. Las pruebas las escribe el agente `test-writer`, y ningún commit se hace sin que pasen las pruebas (principio 4) ni sin tu confirmación.
 
@@ -163,7 +163,7 @@ Tareas en orden de dependencia: cada una solo necesita las anteriores. Las prueb
   - **Cubre:** —
   - **Hecho cuando:** spec y plan dicen «implementada» o «implementado», ningún requisito contradice el código y `MEMORY.md` sigue en ~50 líneas o menos.
 
-- [ ] **T27. Commit.** Proponer el mensaje y los archivos con `/commit` y esperar tu confirmación. No hacer push sin que lo pidas.
+- [x] **T27. Commit.** Proponer el mensaje y los archivos con `/commit` y esperar tu confirmación. No hacer push sin que lo pidas.
   - **Cubre:** —
   - **Hecho cuando:** el commit existe en `feat/search-notes` con autor `Eduardo Alberto <>`, sin `Co-Authored-By`, y `git status` está limpio.
 
