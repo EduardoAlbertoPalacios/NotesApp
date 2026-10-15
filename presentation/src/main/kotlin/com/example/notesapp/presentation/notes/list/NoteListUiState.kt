@@ -10,7 +10,14 @@ data class NoteListUiState(
     val notes: List<NoteItemUi> = emptyList(),
     val hasError: Boolean = false,
     val selectedFilter: NoteFilter = NoteFilter.ALL,
-)
+    val query: String = "",
+    val totalCount: Int = 0,
+) {
+    val isSearching: Boolean get() = query.isNotBlank()
+    val isSearchEnabled: Boolean get() = totalCount > 0
+    val showNoResults: Boolean get() = isSearching && notes.isEmpty() && totalCount > 0
+    val displayQuery: String get() = query.trim()
+}
 
 @Immutable
 data class NoteItemUi(
@@ -20,6 +27,5 @@ data class NoteItemUi(
     val color: NoteColor,
     val isPinned: Boolean,
     val date: NoteDateLabel,
-    /** Ruta de la primera imagen de la nota, para la miniatura; nula si no tiene. */
     val imagePath: String? = null,
 )
