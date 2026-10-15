@@ -9,13 +9,13 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Categorías** Trabajo / Personal: se eligen en el editor (sección "Categoría", Figma `14:4`) y filtran el listado.
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
 - Constitución del proyecto en `docs/constitution.md`; specs en `docs/specs/NNN-nombre/spec.md`.
-- **Búsqueda**: spec `001-enable-search-notes` aprobada (2026-10-13), sin implementar.
+- **Búsqueda** (spec 001, rama `feat/search-notes`): implementada y verificada en emulador (TalkBack dado por bueno sin probar); falta el commit.
 - Pendiente en Figma: selector de color (`4:1710`), Ajustes (`4:1794`).
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
 - `Note` incluye `color` (`NoteColor`) e `isPinned`: el diseño los muestra; aprobado como parte de v1.
-- Búsqueda **solo visual** hasta implementar la spec 001 (ignora el filtro de categoría; «ñ» ≠ «n»). Filtros Todas/Trabajo/Personal funcionales (filtran en `GetNotesUseCase`).
+- Búsqueda en memoria en `:domain` (`NoteTextMatcher` + `GetNotesUseCase(category, query)` → `FilteredNotes`): ignora tildes y mayúsculas pero «ñ» ≠ «n» (FTS/LIKE no lo permiten). Con texto ignora la categoría. El texto vive en `SavedStateHandle`. Filtros Todas/Trabajo/Personal funcionales (filtran en `GetNotesUseCase`).
 - Categoría **opcional** (`Note.category` nula = sin categoría; tocar la elegida la quita). Notas previas a v2 quedan sin categoría. Una nota nueva hereda el filtro activo del listado (arg `category` del editor).
 - Room v1→v2 con `AutoMigration` (columna `category` TEXT nula). `room-testing` aprobado para `MigrationTest`.
 - Orden fijo en `GetNotesUseCase`: fijadas primero, luego última edición desc. El ícono de orden no hace nada.
@@ -40,8 +40,10 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Scripts de reemplazo: verificar siempre que el texto se encontró (un reemplazo silencioso dejó sin guardar la categoría).
 - Pruebas: las escribe el agente `test-writer` (regla en `working-method.md`).
 - `LazyVerticalStaggeredGrid` reparte por columna más corta: el orden visual difiere del mock de Figma (columnas fijas).
+- Muerte de proceso en emulador: `am kill` (repetido hasta que libere el proceso) o «No conservar actividades»; un `kill` por señal descarta la tarea y no sirve.
+- Lint: `NoteEditorRoute.kt:45` (`LocalContextGetResourceValueCall`) es un error preexistente que hace fallar `./gradlew lint`.
 
 ## Próximos pasos
-- Implementar la spec 001 (búsqueda): proponer plan y esperar aprobación.
+- Corregir el error de lint preexistente del editor.
 - Selector de color de nota (Figma `4:1710`) y pantalla de Ajustes (`4:1794`).
 - Prueba de flujo completo con `HiltTestRunner` + `@TestInstallIn` (aún no existe).

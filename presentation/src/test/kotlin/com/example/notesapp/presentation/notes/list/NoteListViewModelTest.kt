@@ -1,5 +1,6 @@
 package com.example.notesapp.presentation.notes.list
 
+import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.GetNotesUseCase
@@ -17,6 +18,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -42,7 +45,11 @@ class NoteListViewModelTest {
         timeZone = TimeZone.getTimeZone("UTC"),
     )
 
-    private fun createViewModel() = NoteListViewModel(GetNotesUseCase(repository), dateFormatter)
+    private fun createViewModel(savedStateHandle: SavedStateHandle = SavedStateHandle()) = NoteListViewModel(
+        savedStateHandle,
+        GetNotesUseCase(repository, mainDispatcherRule.testDispatcher),
+        dateFormatter,
+    )
 
     @Test
     fun `given no emission yet when created then state is loading`() {
@@ -187,7 +194,12 @@ class NoteListViewModelTest {
         viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
 
         assertEquals(
-            NoteListUiState(isLoading = false, notes = emptyList(), selectedFilter = NoteFilter.WORK),
+            NoteListUiState(
+                isLoading = false,
+                notes = emptyList(),
+                selectedFilter = NoteFilter.WORK,
+                totalCount = 1,
+            ),
             viewModel.state.value,
         )
     }
@@ -246,6 +258,193 @@ class NoteListViewModelTest {
         assertEquals("/nueva.jpg", viewModel.state.value.notes.single().imagePath)
     }
 
+    @Test
+    fun `given notes when query changed then updates query and filters flexibly`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(searchNotes))
+
+        viewModel.onIntent(NoteListIntent.QueryChanged("reunion"))
+
+        val state = viewModel.state.value
+        assertEquals("reunion", state.query)
+        assertTrue(state.isSearching)
+        assertEquals(listOf(1L), state.notes.map { it.id })
+    }
+
+    @Test
+    fun `given work filter when searching then results include notes from other categories`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(searchNotes))
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+
+        viewModel.onIntent(NoteListIntent.QueryChanged("lista"))
+
+        assertEquals(NoteFilter.WORK, viewModel.state.value.selectedFilter)
+        assertEquals(listOf(2L, 3L), viewModel.state.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `given several notes when searching then notes size is matches and total count is all notes`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(searchNotes))
+
+        viewModel.onIntent(NoteListIntent.QueryChanged("lista"))
+
+        assertEquals(2, viewModel.state.value.notes.size)
+        assertEquals(3, viewModel.state.value.totalCount)
+    }
+
+    @Test
+    fun `given notes when query matches nothing then shows no results`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(searchNotes))
+
+        viewModel.onIntent(NoteListIntent.QueryChanged("inexistente"))
+
+        val state = viewModel.state.value
+        assertTrue(state.notes.isEmpty())
+        assertTrue(state.showNoResults)
+    }
+
+    @Test
+    fun `given no notes when query in saved state then does not show no results`() = runTest {
+        val viewModel = createViewModel(SavedStateHandle(mapOf("query" to "reunion")))
+
+        notes.emit(AppResult.Success(emptyList()))
+
+        val state = viewModel.state.value
+        assertEquals(0, state.totalCount)
+        assertFalse(state.showNoResults)
+    }
+
+    @Test
+    fun `given active search when filter selected then clears query and shows that category`() = runTest {
+        val savedStateHandle = SavedStateHandle()
+        val viewModel = createViewModel(savedStateHandle)
+        notes.emit(AppResult.Success(searchNotes))
+        viewModel.onIntent(NoteListIntent.QueryChanged("lista"))
+
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+
+        val state = viewModel.state.value
+        assertEquals("", state.query)
+        assertFalse(state.isSearching)
+        assertEquals(NoteFilter.WORK, state.selectedFilter)
+        assertEquals(listOf(1L), state.notes.map { it.id })
+        assertEquals("", savedStateHandle.get<String>("query"))
+    }
+
+    @Test
+    fun `given search over work filter when query emptied then shows work notes again`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(searchNotes))
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+        viewModel.onIntent(NoteListIntent.QueryChanged("lista"))
+
+        viewModel.onIntent(NoteListIntent.QueryChanged(""))
+
+        val state = viewModel.state.value
+        assertFalse(state.isSearching)
+        assertEquals(NoteFilter.WORK, state.selectedFilter)
+        assertEquals(listOf(1L), state.notes.map { it.id })
+    }
+
+    @Test
+    fun `given search over personal filter when clear query clicked then clears query and keeps filter`() = runTest {
+        val savedStateHandle = SavedStateHandle()
+        val viewModel = createViewModel(savedStateHandle)
+        notes.emit(AppResult.Success(searchNotes))
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.PERSONAL))
+        viewModel.onIntent(NoteListIntent.QueryChanged("reunion"))
+
+        viewModel.onIntent(NoteListIntent.ClearQueryClicked)
+
+        val state = viewModel.state.value
+        assertEquals("", state.query)
+        assertEquals(NoteFilter.PERSONAL, state.selectedFilter)
+        assertEquals(listOf(2L), state.notes.map { it.id })
+        assertEquals("", savedStateHandle.get<String>("query"))
+    }
+
+    @Test
+    fun `given query changed when intent received then writes it to saved state handle`() = runTest {
+        val savedStateHandle = SavedStateHandle()
+        val viewModel = createViewModel(savedStateHandle)
+        notes.emit(AppResult.Success(searchNotes))
+
+        viewModel.onIntent(NoteListIntent.QueryChanged("reunion"))
+
+        assertEquals("reunion", savedStateHandle.get<String>("query"))
+    }
+
+    @Test
+    fun `given query in saved state handle when created then restores query and filtered results`() = runTest {
+        val viewModel = createViewModel(SavedStateHandle(mapOf("query" to "reunion")))
+
+        notes.emit(AppResult.Success(searchNotes))
+
+        val state = viewModel.state.value
+        assertEquals("reunion", state.query)
+        assertTrue(state.isSearching)
+        assertEquals(listOf(1L), state.notes.map { it.id })
+    }
+
+    @Test
+    fun `given active search when repository emits edited and deleted notes then recalculates results`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(searchNotes))
+        viewModel.onIntent(NoteListIntent.QueryChanged("lista"))
+
+        notes.emit(
+            AppResult.Success(
+                listOf(
+                    note(id = 1, title = "Lista de la reunión", updatedAt = now, category = NoteCategory.WORK),
+                    searchNotes[1],
+                ),
+            ),
+        )
+
+        val state = viewModel.state.value
+        assertEquals(listOf(1L, 2L), state.notes.map { it.id })
+        assertEquals(2, state.totalCount)
+    }
+
+    @Test
+    fun `given active search when last note deleted then clears query and disables search`() = runTest {
+        val savedStateHandle = SavedStateHandle()
+        val viewModel = createViewModel(savedStateHandle)
+        notes.emit(AppResult.Success(searchNotes))
+        viewModel.onIntent(NoteListIntent.QueryChanged("reunion"))
+
+        notes.emit(AppResult.Success(emptyList()))
+
+        val state = viewModel.state.value
+        assertEquals("", state.query)
+        assertEquals(0, state.totalCount)
+        assertFalse(state.isSearchEnabled)
+        assertEquals("", savedStateHandle.get<String>("query"))
+    }
+
+    @Test
+    fun `given search over work filter when create note clicked then navigates to new note in work`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(searchNotes))
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+        viewModel.onIntent(NoteListIntent.QueryChanged("lista"))
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.CreateNoteClicked)
+            assertEquals(NoteListEffect.NavigateToNote(id = null, category = NoteCategory.WORK), awaitItem())
+        }
+    }
+
+    private val searchNotes
+        get() = listOf(
+            note(id = 1, title = "Reunión de equipo", updatedAt = now - 1 * DAY, category = NoteCategory.WORK),
+            note(id = 2, title = "Lista de compras", updatedAt = now - 2 * DAY, category = NoteCategory.PERSONAL),
+            note(id = 3, title = "Ideas", content = "Lista de libros", updatedAt = now - 3 * DAY, category = null),
+        )
+
     private val mixedNotes
         get() = listOf(
             note(id = 1, updatedAt = now - 1 * DAY, category = NoteCategory.WORK),
@@ -255,14 +454,16 @@ class NoteListViewModelTest {
 
     private fun note(
         id: Long,
+        title: String = "Nota $id",
+        content: String = "Contenido",
         isPinned: Boolean = false,
         updatedAt: Long = now,
         category: NoteCategory? = null,
         images: List<NoteImage> = emptyList(),
     ) = Note(
         id = id,
-        title = "Nota $id",
-        content = "Contenido",
+        title = title,
+        content = content,
         color = NoteColor.MINT,
         isPinned = isPinned,
         category = category,

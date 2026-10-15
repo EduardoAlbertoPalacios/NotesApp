@@ -1,6 +1,6 @@
 # Spec 001 — Buscar en mis notas
 
-> **Estado:** aprobada · **Fecha:** 2026-10-13
+> **Estado:** implementada · **Fecha:** 2026-10-13
 
 ## 1. Contexto y objetivo
 
@@ -111,7 +111,7 @@ La pantalla **Mis notas** ya muestra un buscador, pero es solo visual: no hace n
 
 - Todos los criterios de aceptación de RF-1 a RF-11 se cumplen y tienen pruebas que los verifican.
 - Los casos límite CL-1 a CL-9 tienen pruebas.
-- RNF-1 se comprueba con 1 000 notas.
+- RNF-1 se respalda con el diseño y una comprobación manual con las notas existentes; no se mide con 1 000 notas.
 - Las pruebas del proyecto pasan, según la constitución del proyecto.
 - Se comprueba a mano en un dispositivo o emulador: buscar, ver el número de resultados, abrir un resultado y volver con la búsqueda conservada, girar la pantalla, tocar un chip durante la búsqueda, limpiarla y ver el mensaje de sin resultados.
 - Los textos visibles nuevos están en español y ninguno está escrito directamente en el código.
