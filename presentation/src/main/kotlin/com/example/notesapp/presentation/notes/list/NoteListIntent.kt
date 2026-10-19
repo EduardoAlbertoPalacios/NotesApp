@@ -5,4 +5,6 @@ sealed interface NoteListIntent {
     data object CreateNoteClicked : NoteListIntent
     data object SettingsClicked : NoteListIntent
     data class FilterSelected(val filter: NoteFilter) : NoteListIntent
+    data class QueryChanged(val query: String) : NoteListIntent
+    data object ClearQueryClicked : NoteListIntent
 }

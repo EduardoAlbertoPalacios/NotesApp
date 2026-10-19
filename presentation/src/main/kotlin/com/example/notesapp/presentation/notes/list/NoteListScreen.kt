@@ -26,10 +26,14 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -39,16 +43,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -71,6 +82,10 @@ object NoteListTestTags {
     const val EMPTY = "note_list_empty"
     const val ERROR = "note_list_error"
     const val FILTER = "note_list_filter_"
+    const val SUMMARY = "note_list_summary"
+    const val SEARCH_FIELD = "note_list_search_field"
+    const val SEARCH_CLEAR = "note_list_search_clear"
+    const val SEARCH_NO_RESULTS = "note_list_search_no_results"
 }
 
 @Composable
@@ -105,8 +120,12 @@ fun NoteListScreen(
             verticalItemSpacing = spacing.m,
         ) {
             fullLineItem { NoteListHeader(state = state, onIntent = onIntent) }
-            fullLineItem { SearchField() }
-            fullLineItem { Filters(selected = state.selectedFilter, onIntent = onIntent) }
+            fullLineItem {
+                SearchField(query = state.query, enabled = state.isSearchEnabled, onIntent = onIntent)
+            }
+            fullLineItem {
+                Filters(selected = state.selectedFilter, isSearching = state.isSearching, onIntent = onIntent)
+            }
             fullLineItem { SortRow() }
             when {
                 state.isLoading -> fullLineItem { LoadingState() }
@@ -114,6 +133,15 @@ fun NoteListScreen(
                     MessageState(
                         text = stringResource(R.string.note_list_error),
                         modifier = Modifier.testTag(NoteListTestTags.ERROR),
+                    )
+                }
+                // Va antes que la lista vacía: «ninguna coincide» no es lo mismo que «no tienes notas».
+                state.showNoResults -> fullLineItem {
+                    MessageState(
+                        text = stringResource(R.string.note_list_search_no_results, state.displayQuery),
+                        modifier = Modifier
+                            .testTag(NoteListTestTags.SEARCH_NO_RESULTS)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
                 state.notes.isEmpty() -> fullLineItem {
@@ -165,8 +193,14 @@ private fun NoteListHeader(
                 color = MaterialTheme.colorScheme.onBackground,
             )
             if (!state.isLoading && !state.hasError) {
+                // Durante la búsqueda, el resumen muestra cuántas notas coinciden.
+                val summaryRes = if (state.isSearching) R.plurals.note_list_search_results else R.plurals.note_list_summary
                 Text(
-                    text = pluralStringResource(R.plurals.note_list_summary, state.notes.size, state.notes.size),
+                    text = pluralStringResource(summaryRes, state.notes.size, state.notes.size),
+                    // Los lectores de pantalla anuncian el número de resultados al cambiar.
+                    modifier = Modifier
+                        .testTag(NoteListTestTags.SUMMARY)
+                        .semantics { if (state.isSearching) liveRegion = LiveRegionMode.Polite },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -191,38 +225,84 @@ private fun NoteListHeader(
     }
 }
 
-/** Solo visual por ahora: la búsqueda queda fuera del alcance de v1. */
+/** Sin notas ([enabled] falso) el buscador se ve atenuado y no acepta texto. */
 @Composable
-private fun SearchField(modifier: Modifier = Modifier) {
+private fun SearchField(
+    query: String,
+    enabled: Boolean,
+    onIntent: (NoteListIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val spacing = NotesTheme.spacing
-    Row(
+    val colors = MaterialTheme.colorScheme
+    val textStyle = MaterialTheme.typography.bodyLarge
+    val hintColor = if (enabled) colors.onSurfaceVariant else colors.outlineVariant
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val placeholder = stringResource(R.string.note_list_search_placeholder)
+    BasicTextField(
+        value = query,
+        onValueChange = { onIntent(NoteListIntent.QueryChanged(it)) },
+        // El marcador hace de etiqueta del campo, también cuando ya tiene texto.
         modifier = modifier
             .fillMaxWidth()
-            .height(NotesTheme.sizes.searchHeight)
-            .background(
-                MaterialTheme.colorScheme.surfaceContainer,
-                RoundedCornerShape(NotesTheme.radii.pill)
-            )
-            .padding(horizontal = spacing.l),
-        horizontalArrangement = Arrangement.spacedBy(spacing.m),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_search),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = stringResource(R.string.note_list_search_placeholder),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+            .testTag(NoteListTestTags.SEARCH_FIELD)
+            .semantics { contentDescription = placeholder },
+        enabled = enabled,
+        singleLine = true,
+        textStyle = textStyle.copy(color = colors.onBackground),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
+        cursorBrush = SolidColor(colors.primary),
+        decorationBox = { innerTextField ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(NotesTheme.sizes.searchHeight)
+                    .background(colors.surfaceContainer, RoundedCornerShape(NotesTheme.radii.pill))
+                    .padding(horizontal = spacing.l),
+                horizontalArrangement = Arrangement.spacedBy(spacing.m),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_search),
+                    contentDescription = null,
+                    tint = hintColor,
+                )
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) {
+                        // Ya lo anuncia la etiqueta del campo: se oculta para no leerlo dos veces.
+                        Text(
+                            text = placeholder,
+                            modifier = Modifier.clearAndSetSemantics {},
+                            style = textStyle,
+                            color = hintColor,
+                        )
+                    }
+                    innerTextField()
+                }
+                if (query.isNotEmpty()) {
+                    IconButton(
+                        onClick = { onIntent(NoteListIntent.ClearQueryClicked) },
+                        modifier = Modifier
+                            .size(NotesTheme.sizes.imageAction)
+                            .testTag(NoteListTestTags.SEARCH_CLEAR),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close),
+                            contentDescription = stringResource(R.string.note_list_search_clear),
+                            tint = colors.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+    )
 }
 
 @Composable
 private fun Filters(
     selected: NoteFilter,
+    isSearching: Boolean,
     onIntent: (NoteListIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -237,7 +317,9 @@ private fun Filters(
         NoteFilter.entries.forEach { filter ->
             FilterChip(
                 text = stringResource(filter.labelRes()),
-                isSelected = filter == selected,
+                // La búsqueda abarca todas las categorías: ningún chip se ve seleccionado mientras dura.
+                isSelected = filter == selected && !isSearching,
+                isInactive = isSearching,
                 color = when (selected) {
                     NoteFilter.ALL -> MaterialTheme.colorScheme.tertiary
                     NoteFilter.WORK -> MaterialTheme.colorScheme.primary
@@ -254,18 +336,22 @@ private fun Filters(
 private fun FilterChip(
     text: String,
     isSelected: Boolean,
+    isInactive: Boolean,
     color: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(NotesTheme.radii.pill)
+    val inactiveDescription = stringResource(R.string.note_list_filter_inactive)
     Box(
         modifier = modifier
             .height(NotesTheme.sizes.chipHeight)
             .clip(shape)
             .background(color = if (isSelected) color else colors.surfaceContainer)
+            // Sigue pudiéndose tocar durante la búsqueda: tocarlo la limpia y aplica la categoría.
             .selectable(selected = isSelected, role = Role.Tab, onClick = onClick)
+            .semantics { if (isInactive) stateDescription = inactiveDescription }
             .padding(horizontal = NotesTheme.spacing.l),
         contentAlignment = Alignment.Center,
     ) {
@@ -515,6 +601,34 @@ private fun NoteListScreenLoadingPreview() {
 private fun NoteListScreenEmptyPreview() {
     NotesAppTheme {
         NoteListScreen(state = NoteListUiState(isLoading = false), onIntent = {})
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteListScreenSearchingPreview() {
+    NotesAppTheme {
+        NoteListScreen(
+            state = NoteListUiState(
+                isLoading = false,
+                notes = previewNotes.take(1),
+                selectedFilter = NoteFilter.WORK,
+                query = "reunion",
+                totalCount = previewNotes.size,
+            ),
+            onIntent = {},
+        )
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteListScreenNoResultsPreview() {
+    NotesAppTheme {
+        NoteListScreen(
+            state = NoteListUiState(isLoading = false, query = "viaje", totalCount = previewNotes.size),
+            onIntent = {},
+        )
     }
 }
 

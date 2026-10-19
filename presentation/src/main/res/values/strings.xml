@@ -6,9 +6,16 @@
     </plurals>
     <string name="note_list_settings">Ajustes</string>
     <string name="note_list_search_placeholder">Buscar en tus notas</string>
+    <plurals name="note_list_search_results">
+        <item quantity="one">%d resultado</item>
+        <item quantity="other">%d resultados</item>
+    </plurals>
+    <string name="note_list_search_no_results">No hay notas que coincidan con «%1$s»</string>
+    <string name="note_list_search_clear">Limpiar búsqueda</string>
     <string name="note_list_filter_all">Todas</string>
     <string name="note_list_filter_work">Trabajo</string>
     <string name="note_list_filter_personal">Personal</string>
+    <string name="note_list_filter_inactive">Inactivo durante la búsqueda</string>
     <string name="note_list_sort_last_edited">Última edición</string>
     <string name="note_list_create_note">Nueva nota</string>
     <string name="note_list_pinned">Fijada</string>
