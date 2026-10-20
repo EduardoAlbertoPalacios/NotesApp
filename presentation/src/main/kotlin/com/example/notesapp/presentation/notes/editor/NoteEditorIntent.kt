@@ -1,12 +1,20 @@
 package com.example.notesapp.presentation.notes.editor
 
+import androidx.compose.ui.text.input.TextFieldValue
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteImage
+import com.example.notesapp.domain.notes.TextFormat
 
 sealed interface NoteEditorIntent {
     data class TitleChanged(val title: String) : NoteEditorIntent
-    data class ContentChanged(val content: String) : NoteEditorIntent
+    /** Cambio de texto o solo de selección. */
+    data class ContentChanged(val content: TextFieldValue) : NoteEditorIntent
     data object PinClicked : NoteEditorIntent
+    data class ContentFocusChanged(val isFocused: Boolean) : NoteEditorIntent
+    data object FormatButtonClicked : NoteEditorIntent
+    data object FormatMenuDismissed : NoteEditorIntent
+    /** Con selección alterna el formato en lo seleccionado; sin selección, para lo próximo que se escriba. */
+    data class FormatSelected(val format: TextFormat) : NoteEditorIntent
     /** Elegir la categoría ya seleccionada la quita. */
     data class CategoryClicked(val category: NoteCategory) : NoteEditorIntent
     data object DeleteClicked : NoteEditorIntent

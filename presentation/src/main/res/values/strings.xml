@@ -53,6 +53,11 @@
     <string name="note_editor_toolbar_image">Agregar imagen</string>
     <string name="note_editor_toolbar_undo">Deshacer</string>
     <string name="note_editor_toolbar_color">Color de la nota</string>
+    <string name="note_editor_format_bold">Negrita</string>
+    <string name="note_editor_format_underline">Subrayado</string>
+    <string name="note_editor_format_strikethrough">Tachado</string>
+    <string name="note_editor_format_active">Activo</string>
+    <string name="note_editor_format_inactive">Inactivo</string>
     <string name="note_editor_image">Imagen de la nota</string>
     <string name="note_editor_image_remove">Quitar imagen</string>
     <string name="note_editor_image_error">No pudimos agregar la imagen. Inténtalo con otra.</string>

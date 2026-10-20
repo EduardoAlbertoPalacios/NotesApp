@@ -4,7 +4,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
@@ -13,6 +19,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -20,11 +27,15 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
+import com.example.notesapp.presentation.notes.common.buildFormattedContent
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,7 +49,7 @@ class NoteListScreenTest {
     private val note = NoteItemUi(
         id = 42,
         title = "Reunión de equipo",
-        content = "Prototipo el viernes",
+        content = AnnotatedString("Prototipo el viernes"),
         color = NoteColor.AQUA,
         isPinned = true,
         date = NoteDateLabel.Yesterday,
@@ -78,7 +89,7 @@ class NoteListScreenTest {
         setContent(NoteListUiState(isLoading = false, notes = listOf(note)))
 
         composeRule.onNodeWithText(note.title).assertIsDisplayed()
-        composeRule.onNodeWithText(note.content).assertIsDisplayed()
+        composeRule.onNodeWithText(note.content.text).assertIsDisplayed()
         composeRule.onNodeWithText("1 nota · un espacio para tus ideas").assertIsDisplayed()
     }
 
@@ -269,6 +280,52 @@ class NoteListScreenTest {
         composeRule.onNodeWithTag(NoteListTestTags.FILTER + NoteFilter.WORK.name).assertIsSelected()
     }
 
+    @Test
+    fun given_note_with_formatted_content_when_displayed_then_card_shows_text_with_its_styles() {
+        val text = "Un café rápido"
+        val formatted = note.copy(
+            content = buildFormattedContent(
+                text,
+                listOf(FormatSpan(0, 2, TextFormat.BOLD), FormatSpan(8, 14, TextFormat.UNDERLINE)),
+            ),
+        )
+        setContent(NoteListUiState(isLoading = false, notes = listOf(formatted)))
+
+        val content = composeRule.onNodeWithText(text, useUnmergedTree = true).assertIsDisplayed()
+
+        assertEquals(
+            listOf(
+                AnnotatedString.Range(SpanStyle(fontWeight = FontWeight.Bold), 0, 2),
+                AnnotatedString.Range(SpanStyle(textDecoration = TextDecoration.Underline), 8, 14),
+            ),
+            content.textLayout().layoutInput.text.spanStyles,
+        )
+    }
+
+    @Test
+    fun given_long_formatted_content_when_displayed_then_card_is_shown_and_content_is_clipped() {
+        val text = (1..30).joinToString(separator = "\n") { "Línea $it con formato" }
+        val formatted = note.copy(
+            content = buildFormattedContent(
+                text,
+                listOf(FormatSpan(0, text.length, TextFormat.BOLD), FormatSpan(10, 200, TextFormat.STRIKETHROUGH)),
+            ),
+        )
+        setContent(NoteListUiState(isLoading = false, notes = listOf(formatted)))
+
+        composeRule.onNodeWithTag(NoteListTestTags.NOTE_CARD + formatted.id).assertIsDisplayed()
+        val layout = composeRule.onNodeWithText(text, useUnmergedTree = true).assertIsDisplayed().textLayout()
+
+        assertTrue(layout.hasVisualOverflow)
+        assertEquals(CONTENT_MAX_LINES, layout.lineCount)
+    }
+
+    private fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
+        val results = mutableListOf<TextLayoutResult>()
+        fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+        return results.single()
+    }
+
     private fun searchableState(
         query: String = "",
         notes: List<NoteItemUi> = listOf(note),
@@ -291,5 +348,6 @@ class NoteListScreenTest {
 
     private companion object {
         const val TOTAL_COUNT = 3
+        const val CONTENT_MAX_LINES = 8
     }
 }

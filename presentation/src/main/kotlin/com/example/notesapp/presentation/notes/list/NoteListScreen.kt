@@ -58,16 +58,20 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import coil3.compose.AsyncImage
+import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.asText
+import com.example.notesapp.presentation.notes.common.buildFormattedContent
 import com.example.notesapp.presentation.notes.common.toContainerColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
@@ -533,7 +537,7 @@ private val previewNotes = listOf(
     NoteItemUi(
         id = 1,
         title = "Reunión de equipo",
-        content = "Nuevo lanzamiento:\n• Inicio más sencillo\n• Textos claros\n• Prototipo el viernes",
+        content = AnnotatedString("Nuevo lanzamiento:\n• Inicio más sencillo\n• Textos claros\n• Prototipo el viernes"),
         color = NoteColor.AQUA,
         isPinned = true,
         date = NoteDateLabel.Today("9:38"),
@@ -541,7 +545,7 @@ private val previewNotes = listOf(
     NoteItemUi(
         id = 2,
         title = "La compra",
-        content = "☐  Tomates\n☐  Leche de avena\n☑  Pan integral\n☐  Café",
+        content = AnnotatedString("☐  Tomates\n☐  Leche de avena\n☑  Pan integral\n☐  Café"),
         color = NoteColor.ROSE,
         isPinned = false,
         date = NoteDateLabel.Today("8:15"),
@@ -549,7 +553,10 @@ private val previewNotes = listOf(
     NoteItemUi(
         id = 3,
         title = "Ideas sueltas",
-        content = "Un café, una libreta y tiempo para crear.",
+        content = buildFormattedContent(
+            "Un café, una libreta y tiempo para crear.",
+            listOf(FormatSpan(13, 20, TextFormat.BOLD), FormatSpan(23, 29, TextFormat.UNDERLINE)),
+        ),
         color = NoteColor.SAND,
         isPinned = false,
         date = NoteDateLabel.Yesterday,
@@ -557,7 +564,7 @@ private val previewNotes = listOf(
     NoteItemUi(
         id = 4,
         title = "Escapada",
-        content = "La sierra nos espera.\n\nLlevar la cámara y desconectar.",
+        content = AnnotatedString("La sierra nos espera.\n\nLlevar la cámara y desconectar."),
         color = NoteColor.LAVENDER,
         isPinned = false,
         date = NoteDateLabel.Yesterday,
@@ -565,7 +572,7 @@ private val previewNotes = listOf(
     NoteItemUi(
         id = 5,
         title = "Para leer",
-        content = "Hábitos atómicos",
+        content = AnnotatedString("Hábitos atómicos"),
         color = NoteColor.MINT,
         isPinned = false,
         date = NoteDateLabel.Date("4 oct"),
@@ -573,7 +580,7 @@ private val previewNotes = listOf(
     NoteItemUi(
         id = 6,
         title = "Una buena idea",
-        content = "Hacer más de lo que me hace bien.",
+        content = AnnotatedString("Hacer más de lo que me hace bien."),
         color = NoteColor.PEACH,
         isPinned = false,
         date = NoteDateLabel.Date("3 oct"),

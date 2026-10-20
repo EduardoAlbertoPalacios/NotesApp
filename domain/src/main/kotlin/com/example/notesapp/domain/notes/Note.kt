@@ -11,6 +11,8 @@ data class Note(
     /** Fecha de la última edición, en milisegundos desde epoch. */
     val updatedAt: Long,
     val images: List<NoteImage> = emptyList(),
+    /** Formato del contenido; vacío en texto plano y en las notas anteriores al formato. */
+    val contentSpans: List<FormatSpan> = emptyList(),
 ) {
     val isBlank: Boolean get() = title.isBlank() && content.isBlank() && images.isEmpty()
 

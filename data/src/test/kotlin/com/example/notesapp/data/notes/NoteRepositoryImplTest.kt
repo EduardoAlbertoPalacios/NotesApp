@@ -6,11 +6,13 @@ import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.data.local.NoteEntity
 import com.example.notesapp.data.local.NoteImageEntity
+import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
+import com.example.notesapp.domain.notes.TextFormat
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -211,6 +213,36 @@ class NoteRepositoryImplTest {
         repository.saveNote(stored.copy(title = "Editada"))
 
         assertEquals(listOf("/a.jpg"), dao.storedImages.map { it.path })
+    }
+
+    @Test
+    fun `given new note with spans when saving and reading it then keeps the spans`() = runTest {
+        val spans = listOf(FormatSpan(0, 4, TextFormat.BOLD), FormatSpan(2, 7, TextFormat.UNDERLINE))
+        val result = repository.saveNote(note(id = Note.NEW_ID, title = "Formato").copy(content = "Leer más", contentSpans = spans))
+        val id = (result as AppResult.Success).data
+
+        assertEquals("0,4,B;2,7,U", dao.stored.single().contentSpans)
+        assertEquals(spans, (repository.getNote(id) as AppResult.Success).data.contentSpans)
+        repository.observeNotes().test {
+            assertEquals(spans, (awaitItem() as AppResult.Success).data.single().contentSpans)
+        }
+    }
+
+    @Test
+    fun `given existing note when changing spans then updates stored spans`() = runTest {
+        dao.insertAll(listOf(entity.copy(contentSpans = "0,3,B")))
+        val spans = listOf(FormatSpan(1, 5, TextFormat.STRIKETHROUGH))
+
+        repository.saveNote(entity.toDomain().copy(contentSpans = spans))
+
+        assertEquals(spans, (repository.getNote(1) as AppResult.Success).data.contentSpans)
+    }
+
+    @Test
+    fun `given stored note without spans when reading then spans are empty`() = runTest {
+        dao.insertAll(listOf(entity))
+
+        assertEquals(emptyList<FormatSpan>(), (repository.getNote(1) as AppResult.Success).data.contentSpans)
     }
 
     private suspend fun ReceiveTurbine<AppResult<List<Note>, NoteError>>.awaitImages() =

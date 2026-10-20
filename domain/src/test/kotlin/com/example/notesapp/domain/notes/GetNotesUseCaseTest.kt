@@ -155,6 +155,22 @@ class GetNotesUseCaseTest {
     }
 
     @Test
+    fun `given content with bold span over part of a word when searching then finds it with spans intact`() =
+        runTest {
+            val spans = listOf(FormatSpan(start = 0, end = 3, format = TextFormat.BOLD))
+            val formatted = note(id = 1, updatedAt = 10, title = "Agenda", content = "reunión", contentSpans = spans)
+            val other = note(id = 2, updatedAt = 20, title = "Compras", content = "Leche y pan")
+            val repository = FakeNoteRepository(AppResult.Success(listOf(formatted, other)))
+
+            filteredOf(repository, query = "reunion").test {
+                val result = awaitItem()
+
+                assertEquals(AppResult.Success(FilteredNotes(listOf(formatted), totalCount = 2)), result)
+                assertEquals(spans, (result as AppResult.Success).data.notes.single().contentSpans)
+            }
+        }
+
+    @Test
     fun `given query when invoked then keeps pinned first and newest edit first in results`() = runTest {
         val oldPinned = note(id = 1, isPinned = true, updatedAt = 100, title = "Viaje a Lima")
         val newUnpinned = note(id = 2, isPinned = false, updatedAt = 300, title = "Viaje a Cusco")
@@ -298,6 +314,7 @@ class GetNotesUseCaseTest {
         category: NoteCategory? = null,
         title: String = "Nota $id",
         content: String = "Contenido",
+        contentSpans: List<FormatSpan> = emptyList(),
     ) = Note(
         id = id,
         title = title,
@@ -306,5 +323,6 @@ class GetNotesUseCaseTest {
         isPinned = isPinned,
         category = category,
         updatedAt = updatedAt,
+        contentSpans = contentSpans,
     )
 }
