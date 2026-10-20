@@ -1,9 +1,12 @@
 package com.example.notesapp.presentation.notes.editor
 
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.text.input.TextFieldValue
+import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteImage
+import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 
 @Immutable
@@ -12,7 +15,14 @@ data class NoteEditorUiState(
     val isNewNote: Boolean = true,
     val isLoading: Boolean = false,
     val title: String = "",
-    val content: String = "",
+    /** Contenido con su selección: el formato se aplica sobre lo seleccionado o en la posición del cursor. */
+    val content: TextFieldValue = TextFieldValue(),
+    val contentSpans: List<FormatSpan> = emptyList(),
+    /** Formatos que tendrá lo próximo que se escriba; no se guardan con la nota. */
+    val activeFormats: Set<TextFormat> = emptySet(),
+    val isFormatMenuVisible: Boolean = false,
+    /** El botón de formato solo se habilita con el foco en el contenido. */
+    val isContentFocused: Boolean = false,
     val isPinned: Boolean = false,
     val category: NoteCategory? = null,
     val color: NoteColor = NoteColor.AQUA,

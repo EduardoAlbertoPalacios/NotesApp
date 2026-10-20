@@ -46,6 +46,33 @@ class SaveNoteUseCaseTest {
     }
 
     @Test
+    fun `given note with content spans when saving then stores and returns them with current time`() = runTest {
+        val spans = listOf(
+            FormatSpan(start = 0, end = 3, format = TextFormat.BOLD),
+            FormatSpan(start = 2, end = 7, format = TextFormat.UNDERLINE),
+            FormatSpan(start = 4, end = 7, format = TextFormat.STRIKETHROUGH),
+        )
+        val formatted = note(id = 7, content = "Reunión", contentSpans = spans, updatedAt = 500)
+
+        val result = saveNote(formatted)
+
+        val expected = formatted.copy(updatedAt = NOW)
+        assertEquals(listOf(expected), repository.saved)
+        assertEquals(AppResult.Success(expected), result)
+    }
+
+    @Test
+    fun `given note where only spans changed when saving then updates its edit time`() = runTest {
+        val previous = note(id = 7, content = "Reunión", updatedAt = 500)
+        val reformatted = previous.copy(contentSpans = listOf(FormatSpan(start = 0, end = 3, format = TextFormat.BOLD)))
+
+        val result = saveNote(reformatted)
+
+        assertEquals(AppResult.Success(reformatted.copy(updatedAt = NOW)), result)
+        assertEquals(listOf(reformatted.copy(updatedAt = NOW)), repository.saved)
+    }
+
+    @Test
     fun `given storage failure when saving then returns the error`() = runTest {
         repository.failure = NoteError.Storage
 
@@ -57,6 +84,7 @@ class SaveNoteUseCaseTest {
         title: String = "Título",
         content: String = "",
         updatedAt: Long = 0,
+        contentSpans: List<FormatSpan> = emptyList(),
     ) = Note(
         id = id,
         title = title,
@@ -65,6 +93,7 @@ class SaveNoteUseCaseTest {
         isPinned = false,
         category = null,
         updatedAt = updatedAt,
+        contentSpans = contentSpans,
     )
 
     private companion object {

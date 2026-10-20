@@ -1,6 +1,7 @@
 package com.example.notesapp.presentation.notes.list
 
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.text.AnnotatedString
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 
@@ -23,7 +24,8 @@ data class NoteListUiState(
 data class NoteItemUi(
     val id: Long,
     val title: String,
-    val content: String,
+    /** Contenido con su formato (negrita, subrayado, tachado) para la vista previa de la tarjeta. */
+    val content: AnnotatedString,
     val color: NoteColor,
     val isPinned: Boolean,
     val date: NoteDateLabel,

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lucide «strikethrough» (viewport 24). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M16 4H9a3 3 0 0 0-2.83 4M14 12a4 4 0 0 1 0 8H6M4 12h16"
+        android:strokeWidth="2"
+        android:strokeColor="#F7F7F8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

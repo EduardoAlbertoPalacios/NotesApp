@@ -3,10 +3,12 @@ package com.example.notesapp.data.notes
 import com.example.notesapp.data.local.NoteEntity
 import com.example.notesapp.data.local.NoteImageEntity
 import com.example.notesapp.data.local.NoteWithImages
+import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteImage
+import com.example.notesapp.domain.notes.TextFormat
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -93,6 +95,45 @@ class NoteMappersTest {
     @Test
     fun `given note without images when mapping to domain then images are empty`() {
         assertEquals(note, NoteWithImages(note = entity, images = emptyList()).toDomain())
+    }
+
+    @Test
+    fun `given note with spans when mapping to entity then encodes them`() {
+        val formatted = note.copy(contentSpans = listOf(FormatSpan(0, 2, TextFormat.BOLD), FormatSpan(1, 4, TextFormat.STRIKETHROUGH)))
+
+        assertEquals(entity.copy(contentSpans = "0,2,B;1,4,S"), formatted.toEntity())
+    }
+
+    @Test
+    fun `given entity with spans when mapping to domain then decodes them`() {
+        val formatted = entity.copy(contentSpans = "0,4,U;2,3,B")
+
+        assertEquals(
+            note.copy(contentSpans = listOf(FormatSpan(0, 4, TextFormat.UNDERLINE), FormatSpan(2, 3, TextFormat.BOLD))),
+            formatted.toDomain(),
+        )
+    }
+
+    @Test
+    fun `given note with spans when mapping to entity and back then keeps them`() {
+        val formatted = note.copy(contentSpans = listOf(FormatSpan(0, 4, TextFormat.UNDERLINE), FormatSpan(1, 2, TextFormat.BOLD)))
+
+        assertEquals(formatted, formatted.toEntity().toDomain())
+    }
+
+    @Test
+    fun `given entity with empty spans when mapping to domain then spans are empty`() {
+        assertEquals(emptyList<FormatSpan>(), entity.copy(contentSpans = "").toDomain().contentSpans)
+    }
+
+    @Test
+    fun `given note without spans when mapping to entity then spans are empty string`() {
+        assertEquals("", note.toEntity().contentSpans)
+    }
+
+    @Test
+    fun `given entity with spans beyond content when mapping to domain then clips them to content`() {
+        assertEquals(listOf(FormatSpan(2, 4, TextFormat.BOLD)), entity.copy(contentSpans = "2,99,B").toDomain().contentSpans)
     }
 
     @Test

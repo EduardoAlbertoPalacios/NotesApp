@@ -94,7 +94,7 @@ class MigrationTest {
     }
 
     @Test
-    fun given_v1_database_when_opened_with_room_then_reaches_v3_and_accepts_images() = runTest {
+    fun given_v1_database_when_opened_with_room_then_reaches_latest_version_and_accepts_images() = runTest {
         helper.createDatabase(TEST_DB, 1).apply {
             execSQL(INSERT_V1_NOTE)
             close()
@@ -111,9 +111,61 @@ class MigrationTest {
         val version = database.openHelper.readableDatabase.version
         database.close()
 
-        assertEquals(3, version)
+        assertEquals(4, version)
         assertEquals("Ideas", note?.note?.title)
+        assertEquals("", note?.note?.contentSpans)
         assertEquals(listOf("/a.jpg"), note?.images?.map { it.path })
+    }
+
+    @Test
+    fun given_v3_database_with_note_and_image_when_migrating_to_v4_then_keeps_them_with_empty_spans() {
+        helper.createDatabase(TEST_DB, 3).apply {
+            execSQL(INSERT_V2_NOTE)
+            execSQL(INSERT_V3_IMAGE)
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 4, true)
+
+        db.query("SELECT id, title, content, color, is_pinned, updated_at, category, content_spans FROM notes").use { cursor ->
+            assertEquals(1, cursor.count)
+            cursor.moveToFirst()
+            assertEquals(1L, cursor.getLong(0))
+            assertEquals("Ideas", cursor.getString(1))
+            assertEquals("Libreta", cursor.getString(2))
+            assertEquals("SAND", cursor.getString(3))
+            assertEquals(1, cursor.getInt(4))
+            assertEquals(5L, cursor.getLong(5))
+            assertEquals("WORK", cursor.getString(6))
+            assertEquals("", cursor.getString(7))
+        }
+        db.query("SELECT id, note_id, path FROM note_images").use { cursor ->
+            assertEquals(1, cursor.count)
+            cursor.moveToFirst()
+            assertEquals(1L, cursor.getLong(0))
+            assertEquals(1L, cursor.getLong(1))
+            assertEquals("/a.jpg", cursor.getString(2))
+        }
+        db.close()
+    }
+
+    @Test
+    fun given_v3_database_when_opened_with_room_then_reads_note_without_spans() = runTest {
+        helper.createDatabase(TEST_DB, 3).apply {
+            execSQL(INSERT_V2_NOTE)
+            close()
+        }
+
+        val database = Room.databaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            NotesDatabase::class.java,
+            TEST_DB,
+        ).build()
+        val note = database.noteDao().getById(1)
+        database.close()
+
+        assertEquals("Libreta", note?.note?.content)
+        assertEquals("", note?.note?.contentSpans)
     }
 
     private companion object {
@@ -124,5 +176,7 @@ class MigrationTest {
         const val INSERT_V2_NOTE =
             "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category) " +
                 "VALUES (1, 'Ideas', 'Libreta', 'SAND', 1, 5, 'WORK')"
+        const val INSERT_V3_IMAGE =
+            "INSERT INTO note_images (id, note_id, path) VALUES (1, 1, '/a.jpg')"
     }
 }

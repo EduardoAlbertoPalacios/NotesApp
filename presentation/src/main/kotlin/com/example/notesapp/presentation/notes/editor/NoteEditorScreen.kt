@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -59,15 +60,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import coil3.compose.AsyncImage
+import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteImage
+import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.notes.common.FormattedContentTransformation
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.asText
 import com.example.notesapp.presentation.notes.common.toContainerColor
@@ -88,6 +96,9 @@ object NoteEditorTestTags {
     const val CATEGORY_TAG = "note_editor_category_tag"
     const val CATEGORY_OPTION = "note_editor_category_"
     const val TOOLBAR_IMAGE = "note_editor_toolbar_image"
+    const val TOOLBAR_FORMAT = "note_editor_toolbar_format"
+    const val FORMAT_MENU = "note_editor_format_menu"
+    const val FORMAT_OPTION = "note_editor_format_"
     const val IMAGE = "note_editor_image_"
     const val REMOVE_IMAGE = "note_editor_remove_image_"
 }
@@ -118,7 +129,7 @@ fun NoteEditorScreen(
                 else -> {
                     NoteContent(state = state, onIntent = onIntent, modifier = Modifier.weight(1f))
                     SaveStatusRow(status = state.saveStatus)
-                    EditorToolbar(color = state.color, onIntent = onIntent)
+                    EditorToolbar(state = state, onIntent = onIntent)
                 }
             }
         }
@@ -261,7 +272,10 @@ private fun NoteContent(
             onValueChange = { onIntent(NoteEditorIntent.ContentChanged(it)) },
             placeholder = stringResource(R.string.note_editor_content_placeholder),
             textStyle = NotesTheme.typography.editorBody,
-            modifier = Modifier.testTag(NoteEditorTestTags.CONTENT),
+            visualTransformation = FormattedContentTransformation(state.contentSpans),
+            modifier = Modifier
+                .onFocusChanged { onIntent(NoteEditorIntent.ContentFocusChanged(it.isFocused)) }
+                .testTag(NoteEditorTestTags.CONTENT),
         )
     }
 }
@@ -392,6 +406,31 @@ private fun NoteCategory.descriptionRes(): Int = when (this) {
     NoteCategory.PERSONAL -> R.string.note_category_personal_description
 }
 
+/** Campo del contenido: trabaja con la selección para poder aplicar formato. */
+@Composable
+private fun EditorTextField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    textStyle: TextStyle,
+    modifier: Modifier = Modifier,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+) {
+    val colors = MaterialTheme.colorScheme
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        visualTransformation = visualTransformation,
+        modifier = modifier.editorField(placeholder),
+        textStyle = textStyle.copy(color = colors.onBackground),
+        keyboardOptions = EditorKeyboardOptions,
+        cursorBrush = SolidColor(colors.primary),
+        decorationBox = { innerTextField ->
+            EditorFieldDecoration(isEmpty = value.text.isEmpty(), placeholder, textStyle, innerTextField)
+        },
+    )
+}
+
 @Composable
 private fun EditorTextField(
     value: String,
@@ -404,21 +443,35 @@ private fun EditorTextField(
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = placeholder },
+        modifier = modifier.editorField(placeholder),
         textStyle = textStyle.copy(color = colors.onBackground),
-        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+        keyboardOptions = EditorKeyboardOptions,
         cursorBrush = SolidColor(colors.primary),
         decorationBox = { innerTextField ->
-            Box {
-                if (value.isEmpty()) {
-                    Text(text = placeholder, style = textStyle, color = colors.onSurfaceVariant)
-                }
-                innerTextField()
-            }
+            EditorFieldDecoration(isEmpty = value.isEmpty(), placeholder, textStyle, innerTextField)
         },
     )
+}
+
+private val EditorKeyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
+
+/** El marcador también hace de etiqueta accesible del campo. */
+private fun Modifier.editorField(placeholder: String): Modifier =
+    fillMaxWidth().semantics { contentDescription = placeholder }
+
+@Composable
+private fun EditorFieldDecoration(
+    isEmpty: Boolean,
+    placeholder: String,
+    textStyle: TextStyle,
+    innerTextField: @Composable () -> Unit,
+) {
+    Box {
+        if (isEmpty) {
+            Text(text = placeholder, style = textStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        innerTextField()
+    }
 }
 
 @Composable
@@ -479,7 +532,7 @@ private fun NoteImageItem(
 /** Barra de edición del diseño. Por ahora solo "Agregar imagen" funciona; el resto se muestra deshabilitado. */
 @Composable
 private fun EditorToolbar(
-    color: NoteColor,
+    state: NoteEditorUiState,
     onIntent: (NoteEditorIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -493,7 +546,24 @@ private fun EditorToolbar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ToolbarButton(R.drawable.ic_type, R.string.note_editor_toolbar_text)
+        Box {
+            // El formato solo se aplica al contenido: con el foco en el título, el botón queda deshabilitado.
+            ToolbarButton(
+                iconRes = R.drawable.ic_type,
+                labelRes = R.string.note_editor_toolbar_text,
+                onClick = if (state.isContentFocused) {
+                    { onIntent(NoteEditorIntent.FormatButtonClicked) }
+                } else {
+                    null
+                },
+                modifier = Modifier.testTag(NoteEditorTestTags.TOOLBAR_FORMAT),
+            )
+            FormatMenu(
+                isExpanded = state.isFormatMenuVisible,
+                activeFormats = state.activeFormats,
+                onIntent = onIntent,
+            )
+        }
         ToolbarButton(R.drawable.ic_list_todo, R.string.note_editor_toolbar_checklist)
         ToolbarButton(
             iconRes = R.drawable.ic_image,
@@ -512,10 +582,58 @@ private fun EditorToolbar(
             Box(
                 modifier = Modifier
                     .size(NotesTheme.sizes.colorDot)
-                    .background(color.toContainerColor(), CircleShape),
+                    .background(state.color.toContainerColor(), CircleShape),
             )
         }
     }
+}
+
+/** Menú del botón «Aa»: cada opción marca con un ícono si está activa, no solo con color. */
+@Composable
+private fun FormatMenu(
+    isExpanded: Boolean,
+    activeFormats: Set<TextFormat>,
+    onIntent: (NoteEditorIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    DropdownMenu(
+        expanded = isExpanded,
+        onDismissRequest = { onIntent(NoteEditorIntent.FormatMenuDismissed) },
+        modifier = modifier.testTag(NoteEditorTestTags.FORMAT_MENU),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        TextFormat.entries.forEach { format ->
+            val isActive = format in activeFormats
+            val stateText = stringResource(
+                if (isActive) R.string.note_editor_format_active else R.string.note_editor_format_inactive,
+            )
+            DropdownMenuItem(
+                text = { Text(text = stringResource(format.labelRes())) },
+                onClick = { onIntent(NoteEditorIntent.FormatSelected(format)) },
+                modifier = Modifier
+                    .testTag(NoteEditorTestTags.FORMAT_OPTION + format.name)
+                    .semantics { stateDescription = stateText },
+                leadingIcon = { Icon(painter = painterResource(format.iconRes()), contentDescription = null) },
+                trailingIcon = if (isActive) {
+                    { Icon(painter = painterResource(R.drawable.ic_check), contentDescription = null) }
+                } else {
+                    null
+                },
+            )
+        }
+    }
+}
+
+private fun TextFormat.labelRes(): Int = when (this) {
+    TextFormat.BOLD -> R.string.note_editor_format_bold
+    TextFormat.UNDERLINE -> R.string.note_editor_format_underline
+    TextFormat.STRIKETHROUGH -> R.string.note_editor_format_strikethrough
+}
+
+private fun TextFormat.iconRes(): Int = when (this) {
+    TextFormat.BOLD -> R.drawable.ic_bold
+    TextFormat.UNDERLINE -> R.drawable.ic_underline
+    TextFormat.STRIKETHROUGH -> R.drawable.ic_strikethrough
 }
 
 /** Sin [onClick] el botón se muestra deshabilitado: la función todavía no existe. */
@@ -626,14 +744,40 @@ private fun LoadErrorState(
 
 @Preview(widthDp = 412, heightDp = 892)
 @Composable
+private fun NoteEditorScreenFormatMenuPreview() {
+    NotesAppTheme {
+        NoteEditorScreen(
+            state = NoteEditorUiState(
+                isNewNote = false,
+                title = "Lista de la semana",
+                content = TextFieldValue("Comprar pan\nLlamar al banco\nRevisar el informe", TextRange(0, 11)),
+                contentSpans = listOf(FormatSpan(0, 11, TextFormat.BOLD), FormatSpan(12, 27, TextFormat.STRIKETHROUGH)),
+                activeFormats = setOf(TextFormat.BOLD),
+                isContentFocused = true,
+                isFormatMenuVisible = true,
+            ),
+            onIntent = {},
+        )
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
 private fun NoteEditorScreenPreview() {
     NotesAppTheme {
         NoteEditorScreen(
             state = NoteEditorUiState(
                 isNewNote = false,
                 title = "Reunión de equipo",
-                content = "Ideas y próximos pasos para el nuevo lanzamiento. Menos ruido, más foco.\n\n" +
-                    "Una idea para recordar: dejar espacio para lo importante.",
+                content = TextFieldValue(
+                    "Ideas y próximos pasos para el nuevo lanzamiento. Menos ruido, más foco.\n\n" +
+                        "Una idea para recordar: dejar espacio para lo importante.",
+                ),
+                contentSpans = listOf(
+                    FormatSpan(0, 22, TextFormat.BOLD),
+                    FormatSpan(50, 61, TextFormat.STRIKETHROUGH),
+                    FormatSpan(98, 130, TextFormat.UNDERLINE),
+                ),
                 isPinned = true,
                 category = NoteCategory.WORK,
                 date = NoteDateLabel.Today("9:38"),

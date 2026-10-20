@@ -1,5 +1,6 @@
 package com.example.notesapp.presentation.notes.editor
 
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,9 +12,11 @@ import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
+import com.example.notesapp.domain.notes.NoteFormatting
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.RemoveNoteImageUseCase
 import com.example.notesapp.domain.notes.SaveNoteUseCase
+import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -79,8 +82,12 @@ class NoteEditorViewModel @Inject constructor(
     fun onIntent(intent: NoteEditorIntent) {
         when (intent) {
             is NoteEditorIntent.TitleChanged -> edit { it.copy(title = intent.title) }
-            is NoteEditorIntent.ContentChanged -> edit { it.copy(content = intent.content) }
+            is NoteEditorIntent.ContentChanged -> changeContent(intent.content)
             NoteEditorIntent.PinClicked -> saveNow { it.copy(isPinned = !it.isPinned) }
+            is NoteEditorIntent.ContentFocusChanged -> _state.update { it.copy(isContentFocused = intent.isFocused) }
+            NoteEditorIntent.FormatButtonClicked -> _state.update { it.copy(isFormatMenuVisible = true) }
+            NoteEditorIntent.FormatMenuDismissed -> _state.update { it.copy(isFormatMenuVisible = false) }
+            is NoteEditorIntent.FormatSelected -> selectFormat(intent.format)
             NoteEditorIntent.AddImageClicked -> send(NoteEditorEffect.OpenImagePicker)
             is NoteEditorIntent.ImagesPicked -> addImages(intent.uris)
             is NoteEditorIntent.RemoveImageClicked -> removeImage(intent.image)
@@ -104,7 +111,8 @@ class NoteEditorViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             title = note.title,
-                            content = note.content,
+                            content = TextFieldValue(note.content),
+                            contentSpans = note.contentSpans,
                             isPinned = note.isPinned,
                             category = note.category,
                             color = note.color,
@@ -131,6 +139,52 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
+    private fun changeContent(content: TextFieldValue) {
+        val current = _state.value
+        if (content.text == current.content.text) {
+            // Mover el cursor o cambiar la selección no es una edición: no se guarda.
+            val activeFormats = if (content.selection == current.content.selection) {
+                current.activeFormats
+            } else {
+                NoteFormatting.activeFormats(current.contentSpans, content.selection.min, content.selection.max)
+            }
+            _state.update { it.copy(content = content, activeFormats = activeFormats) }
+        } else {
+            // Lo escrito o pegado toma los formatos activos; el resto de los tramos se desplaza.
+            edit {
+                it.copy(
+                    content = content,
+                    contentSpans = NoteFormatting.onTextChanged(
+                        spans = it.contentSpans,
+                        old = it.content.text,
+                        new = content.text,
+                        activeFormats = it.activeFormats,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun selectFormat(format: TextFormat) {
+        val selection = _state.value.content.selection
+        if (selection.collapsed) {
+            // Sin selección solo cambia lo que se escribirá después: no es una edición.
+            _state.update {
+                val activeFormats = if (format in it.activeFormats) it.activeFormats - format else it.activeFormats + format
+                it.copy(isFormatMenuVisible = false, activeFormats = activeFormats)
+            }
+        } else {
+            edit {
+                val spans = NoteFormatting.toggle(it.contentSpans, selection.min, selection.max, format)
+                it.copy(
+                    isFormatMenuVisible = false,
+                    contentSpans = spans,
+                    activeFormats = NoteFormatting.activeFormats(spans, selection.min, selection.max),
+                )
+            }
+        }
+    }
+
     /** Cambios de un toque (fijar, categoría): se guardan al momento, sin esperar al autoguardado. */
     private fun saveNow(transform: (NoteEditorUiState) -> NoteEditorUiState) {
         _state.update(transform)
@@ -144,7 +198,8 @@ class NoteEditorViewModel @Inject constructor(
         val current = _state.value
         val draft = note.copy(
             title = current.title,
-            content = current.content,
+            content = current.content.text,
+            contentSpans = current.contentSpans,
             isPinned = current.isPinned,
             category = current.category,
         )
@@ -153,10 +208,7 @@ class NoteEditorViewModel @Inject constructor(
             is AppResult.Success -> {
                 note = result.data
                 // Si hubo ediciones durante el guardado, el autoguardado pendiente las guardará.
-                hasPendingChanges = _state.value.run {
-                    title != note.title || content != note.content || isPinned != note.isPinned ||
-                        category != note.category
-                }
+                hasPendingChanges = hasUnsavedChanges()
                 _state.update {
                     it.copy(saveStatus = SaveStatus.Saved, date = dateFormatter.format(note.updatedAt))
                 }
@@ -172,6 +224,12 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
+    /** Si el estado tiene cambios que la última versión guardada ([note]) todavía no incluye. */
+    private fun hasUnsavedChanges(): Boolean = _state.value.run {
+        title != note.title || content.text != note.content || isPinned != note.isPinned ||
+            category != note.category || contentSpans != note.contentSpans
+    }
+
     private fun addImages(uris: List<String>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
@@ -180,7 +238,8 @@ class NoteEditorViewModel @Inject constructor(
                 // El borrador lleva el texto actual, que se guarda junto con las imágenes.
                 val draft = note.copy(
                     title = current.title,
-                    content = current.content,
+                    content = current.content.text,
+                    contentSpans = current.contentSpans,
                     isPinned = current.isPinned,
                     category = current.category,
                 )
@@ -191,10 +250,7 @@ class NoteEditorViewModel @Inject constructor(
                             send(NoteEditorEffect.ShowMessage(R.string.note_editor_image_error))
                         }
                         // Si hubo ediciones mientras se copiaban las imágenes, el autoguardado las guardará.
-                        hasPendingChanges = _state.value.run {
-                            title != note.title || content != note.content || isPinned != note.isPinned ||
-                                category != note.category
-                        }
+                        hasPendingChanges = hasUnsavedChanges()
                         _state.update {
                             it.copy(
                                 images = note.images,

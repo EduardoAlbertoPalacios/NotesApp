@@ -181,6 +181,28 @@ class NoteDaoTest {
         assertTrue(result.exceptionOrNull() is SQLiteConstraintException)
     }
 
+    @Test
+    fun given_note_with_spans_when_inserted_then_reads_it_unchanged() = runTest {
+        val note = noteEntity().copy(content = "Libreta de ideas", contentSpans = "0,7,B;3,10,U;11,16,S")
+
+        val id = dao.insert(note)
+
+        assertEquals(note.copy(id = id), dao.getById(id)?.note)
+        dao.observeAll().test {
+            assertEquals(note.copy(id = id), awaitItem().single().note)
+        }
+    }
+
+    @Test
+    fun given_note_with_spans_when_spans_updated_then_persists_change() = runTest {
+        val note = noteEntity().copy(content = "Libreta", contentSpans = "0,3,B")
+        val id = dao.insert(note)
+
+        dao.update(note.copy(id = id, contentSpans = ""))
+
+        assertEquals("", dao.getById(id)?.note?.contentSpans)
+    }
+
     /** Lee la tabla directamente para comprobar que no quedan filas huérfanas. */
     private fun imagesInTable(): List<Pair<Long, String>> =
         database.query("SELECT note_id, path FROM note_images", null).use { cursor ->

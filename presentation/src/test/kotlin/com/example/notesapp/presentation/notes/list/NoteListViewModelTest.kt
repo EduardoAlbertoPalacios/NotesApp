@@ -1,8 +1,13 @@
 package com.example.notesapp.presentation.notes.list
 
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.GetNotesUseCase
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
@@ -10,6 +15,7 @@ import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
+import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.MainDispatcherRule
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
 import java.util.Locale
@@ -74,7 +80,7 @@ class NoteListViewModelTest {
             NoteItemUi(
                 id = 2,
                 title = "Nota 2",
-                content = "Contenido",
+                content = AnnotatedString("Contenido"),
                 color = NoteColor.MINT,
                 isPinned = true,
                 date = dateFormatter.format(pinned.updatedAt),
@@ -438,6 +444,55 @@ class NoteListViewModelTest {
         }
     }
 
+    @Test
+    fun `given note with bold and underline spans when loaded then content keeps text and has their styles`() = runTest {
+        val viewModel = createViewModel()
+        val spans = listOf(FormatSpan(0, 2, TextFormat.BOLD), FormatSpan(8, 14, TextFormat.UNDERLINE))
+
+        notes.emit(AppResult.Success(listOf(note(id = 1, content = "Un café rápido", contentSpans = spans))))
+
+        val content = viewModel.state.value.notes.single().content
+        assertEquals("Un café rápido", content.text)
+        assertEquals(
+            listOf(
+                AnnotatedString.Range(SpanStyle(fontWeight = FontWeight.Bold), 0, 2),
+                AnnotatedString.Range(SpanStyle(textDecoration = TextDecoration.Underline), 8, 14),
+            ),
+            content.spanStyles,
+        )
+    }
+
+    @Test
+    fun `given note without spans when loaded then content has no styles`() = runTest {
+        val viewModel = createViewModel()
+
+        notes.emit(AppResult.Success(listOf(note(id = 1, content = "Texto plano"))))
+
+        val content = viewModel.state.value.notes.single().content
+        assertEquals("Texto plano", content.text)
+        assertTrue(content.spanStyles.isEmpty())
+    }
+
+    @Test
+    fun `given note with formatted content when searching a word across its spans then finds it`() = runTest {
+        val viewModel = createViewModel()
+        val formatted = note(
+            id = 4,
+            title = "Sin coincidencia",
+            content = "Comprar pan integral",
+            updatedAt = now - 4 * DAY,
+            contentSpans = listOf(FormatSpan(0, 10, TextFormat.BOLD), FormatSpan(8, 20, TextFormat.UNDERLINE)),
+        )
+        notes.emit(AppResult.Success(searchNotes + formatted))
+
+        viewModel.onIntent(NoteListIntent.QueryChanged("pan integral"))
+
+        val match = viewModel.state.value.notes.single()
+        assertEquals(4L, match.id)
+        assertEquals("Comprar pan integral", match.content.text)
+        assertFalse(match.content.spanStyles.isEmpty())
+    }
+
     private val searchNotes
         get() = listOf(
             note(id = 1, title = "Reunión de equipo", updatedAt = now - 1 * DAY, category = NoteCategory.WORK),
@@ -460,6 +515,7 @@ class NoteListViewModelTest {
         updatedAt: Long = now,
         category: NoteCategory? = null,
         images: List<NoteImage> = emptyList(),
+        contentSpans: List<FormatSpan> = emptyList(),
     ) = Note(
         id = id,
         title = title,
@@ -469,6 +525,7 @@ class NoteListViewModelTest {
         category = category,
         updatedAt = updatedAt,
         images = images,
+        contentSpans = contentSpans,
     )
 
     private companion object {

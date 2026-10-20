@@ -1,11 +1,14 @@
 package com.example.notesapp.presentation.notes.editor
 
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.common.time.TimeProvider
 import com.example.notesapp.domain.notes.AddNoteImagesUseCase
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
+import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.GetNoteUseCase
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
@@ -16,6 +19,7 @@ import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.domain.notes.RemoveNoteImageUseCase
 import com.example.notesapp.domain.notes.SaveNoteUseCase
+import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.MainDispatcherRule
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
@@ -30,6 +34,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -91,7 +96,7 @@ class NoteEditorViewModelTest {
         val state = viewModel.state.value
         assertEquals(false, state.isLoading)
         assertEquals(existing.title, state.title)
-        assertEquals(existing.content, state.content)
+        assertEquals(existing.content, state.content.text)
         assertEquals(dateFormatter.format(existing.updatedAt), state.date)
     }
 
@@ -122,7 +127,7 @@ class NoteEditorViewModelTest {
         viewModel.onIntent(NoteEditorIntent.TitleChanged("Ide"))
         advanceTimeBy(200)
         viewModel.onIntent(NoteEditorIntent.TitleChanged("Ideas"))
-        viewModel.onIntent(NoteEditorIntent.ContentChanged("Libreta"))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Libreta")))
         advanceUntilIdle()
 
         val saved = repository.notes.values.single()
@@ -131,7 +136,7 @@ class NoteEditorViewModelTest {
         assertEquals(NOW, saved.updatedAt)
         assertEquals(SaveStatus.Saved, viewModel.state.value.saveStatus)
 
-        viewModel.onIntent(NoteEditorIntent.ContentChanged("Libreta y café"))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Libreta y café")))
         advanceUntilIdle()
 
         assertEquals("Libreta y café", repository.notes.values.single().content)
@@ -143,7 +148,7 @@ class NoteEditorViewModelTest {
         val viewModel = createViewModel(existing.id)
         advanceUntilIdle()
 
-        viewModel.onIntent(NoteEditorIntent.ContentChanged("Nuevo texto"))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Nuevo texto")))
         advanceUntilIdle()
 
         assertEquals(existing.copy(content = "Nuevo texto", updatedAt = NOW), repository.notes[existing.id])
@@ -611,6 +616,274 @@ class NoteEditorViewModelTest {
         assertEquals(listOf(imageA.path, imageB.path), imageStorage.deletedPaths)
     }
 
+    @Test
+    fun `given editor when format button clicked and menu dismissed then toggles the format menu`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onIntent(NoteEditorIntent.FormatButtonClicked)
+        assertTrue(viewModel.state.value.isFormatMenuVisible)
+
+        viewModel.onIntent(NoteEditorIntent.FormatMenuDismissed)
+        assertFalse(viewModel.state.value.isFormatMenuVisible)
+    }
+
+    @Test
+    fun `given content focus changes when intents received then updates content focus`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onIntent(NoteEditorIntent.ContentFocusChanged(isFocused = true))
+        assertTrue(viewModel.state.value.isContentFocused)
+
+        viewModel.onIntent(NoteEditorIntent.ContentFocusChanged(isFocused = false))
+        assertFalse(viewModel.state.value.isContentFocused)
+    }
+
+    @Test
+    fun `given selected text when format selected then applies it keeping selection and closing the menu`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val selection = TextRange(0, 5)
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, selection)))
+        viewModel.onIntent(NoteEditorIntent.FormatButtonClicked)
+
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+
+        val state = viewModel.state.value
+        assertEquals(listOf(FormatSpan(0, 5, TextFormat.BOLD)), state.contentSpans)
+        assertEquals(selection, state.content.selection)
+        assertEquals(existing.content, state.content.text)
+        assertEquals(setOf(TextFormat.BOLD), state.activeFormats)
+        assertFalse(state.isFormatMenuVisible)
+    }
+
+    @Test
+    fun `given format applied to selection when autosave delay elapses then saves spans with a new date`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        repository.notes[old.id] = old
+        val viewModel = createViewModel(old.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(old.content, TextRange(6, 11))))
+
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.UNDERLINE))
+        advanceTimeBy(NoteEditorViewModel.AUTOSAVE_DELAY_MS - 1)
+        runCurrent()
+
+        assertEquals(old, repository.notes[old.id])
+
+        advanceUntilIdle()
+
+        val stored = repository.notes.getValue(old.id)
+        assertEquals(listOf(FormatSpan(6, 11, TextFormat.UNDERLINE)), stored.contentSpans)
+        assertEquals(old.content, stored.content)
+        assertEquals(NOW, stored.updatedAt)
+        assertEquals(dateFormatter.format(NOW), viewModel.state.value.date)
+        assertEquals(SaveStatus.Saved, viewModel.state.value.saveStatus)
+    }
+
+    @Test
+    fun `given selection fully formatted when format selected then removes it and saves`() = runTest {
+        repository.notes[existing.id] = existing.copy(contentSpans = listOf(FormatSpan(0, 11, TextFormat.BOLD)))
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(0, 5))))
+
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+        advanceUntilIdle()
+
+        val expected = listOf(FormatSpan(5, 11, TextFormat.BOLD))
+        assertEquals(expected, viewModel.state.value.contentSpans)
+        assertEquals(emptySet<TextFormat>(), viewModel.state.value.activeFormats)
+        assertEquals(expected, repository.notes.getValue(existing.id).contentSpans)
+    }
+
+    @Test
+    fun `given cursor without selection when format selected then toggles active formats without saving`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(5))))
+        viewModel.onIntent(NoteEditorIntent.FormatButtonClicked)
+
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+
+        assertEquals(setOf(TextFormat.BOLD), viewModel.state.value.activeFormats)
+        assertFalse(viewModel.state.value.isFormatMenuVisible)
+        assertTrue(viewModel.state.value.contentSpans.isEmpty())
+
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+
+        assertEquals(emptySet<TextFormat>(), viewModel.state.value.activeFormats)
+    }
+
+    @Test
+    fun `given format chosen without selection when nothing typed then the note and its date do not change`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(5))))
+
+            viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.STRIKETHROUGH))
+            advanceUntilIdle()
+
+            assertEquals(existing, repository.notes[existing.id])
+            assertEquals(SaveStatus.Idle, viewModel.state.value.saveStatus)
+        }
+
+    @Test
+    fun `given format chosen without selection when back clicked then navigates back without saving`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+        assertEquals(existing, repository.notes[existing.id])
+    }
+
+    @Test
+    fun `given active formats when typing then typed text gets them and is saved`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("H", TextRange(1))))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Ho", TextRange(2))))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Hola", TextRange(4))))
+        advanceUntilIdle()
+
+        val expected = listOf(FormatSpan(0, 4, TextFormat.BOLD))
+        assertEquals(expected, viewModel.state.value.contentSpans)
+        assertEquals(setOf(TextFormat.BOLD), viewModel.state.value.activeFormats)
+        val stored = repository.notes.values.single()
+        assertEquals("Hola", stored.content)
+        assertEquals(expected, stored.contentSpans)
+    }
+
+    @Test
+    fun `given no active formats when typing after formatted text then typed text stays plain`() = runTest {
+        repository.notes[existing.id] = existing.copy(content = "Hola", contentSpans = listOf(FormatSpan(0, 4, TextFormat.BOLD)))
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Hola", TextRange(4))))
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Hola!", TextRange(5))))
+
+        assertEquals(listOf(FormatSpan(0, 4, TextFormat.BOLD)), viewModel.state.value.contentSpans)
+    }
+
+    @Test
+    fun `given active formats when pasting several letters then pasted text gets all of them`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val end = existing.content.length
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(end))))
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.UNDERLINE))
+
+        val pasted = existing.content + " Pegado"
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(pasted, TextRange(pasted.length))))
+        advanceUntilIdle()
+
+        val expected = listOf(
+            FormatSpan(end, pasted.length, TextFormat.BOLD),
+            FormatSpan(end, pasted.length, TextFormat.UNDERLINE),
+        )
+        assertEquals(expected, viewModel.state.value.contentSpans)
+        assertEquals(expected, repository.notes.getValue(existing.id).contentSpans)
+        assertEquals(pasted, repository.notes.getValue(existing.id).content)
+    }
+
+    @Test
+    fun `given cursor moved into formatted text when selection changes then active formats follow without saving`() =
+        runTest {
+            val formatted = existing.copy(contentSpans = listOf(FormatSpan(0, 5, TextFormat.BOLD)))
+            repository.notes[formatted.id] = formatted
+            val viewModel = createViewModel(formatted.id)
+            advanceUntilIdle()
+
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(formatted.content, TextRange(3))))
+            assertEquals(setOf(TextFormat.BOLD), viewModel.state.value.activeFormats)
+
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(formatted.content, TextRange(10))))
+            assertEquals(emptySet<TextFormat>(), viewModel.state.value.activeFormats)
+
+            advanceUntilIdle()
+            assertEquals(formatted, repository.notes[formatted.id])
+            assertEquals(SaveStatus.Idle, viewModel.state.value.saveStatus)
+            assertEquals(TextRange(10), viewModel.state.value.content.selection)
+        }
+
+    @Test
+    fun `given format activated without typing when cursor moves elsewhere then format is no longer active`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(5))))
+            viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(12))))
+            advanceUntilIdle()
+
+            assertEquals(emptySet<TextFormat>(), viewModel.state.value.activeFormats)
+            assertEquals(existing, repository.notes[existing.id])
+        }
+
+    @Test
+    fun `given range fully covered by a format when selected then that format is active`() = runTest {
+        val formatted = existing.copy(
+            contentSpans = listOf(FormatSpan(0, 5, TextFormat.BOLD), FormatSpan(3, 11, TextFormat.UNDERLINE)),
+        )
+        repository.notes[formatted.id] = formatted
+        val viewModel = createViewModel(formatted.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(formatted.content, TextRange(3, 5))))
+        assertEquals(setOf(TextFormat.BOLD, TextFormat.UNDERLINE), viewModel.state.value.activeFormats)
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(formatted.content, TextRange(0, 5))))
+        assertEquals(setOf(TextFormat.BOLD), viewModel.state.value.activeFormats)
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(formatted.content, TextRange(0, 11))))
+        assertEquals(emptySet<TextFormat>(), viewModel.state.value.activeFormats)
+
+        advanceUntilIdle()
+        assertEquals(formatted, repository.notes[formatted.id])
+    }
+
+    @Test
+    fun `given note with spans when loaded then exposes its spans`() = runTest {
+        val spans = listOf(FormatSpan(0, 5, TextFormat.BOLD), FormatSpan(13, 21, TextFormat.STRIKETHROUGH))
+        repository.notes[existing.id] = existing.copy(contentSpans = spans)
+
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertEquals(spans, viewModel.state.value.contentSpans)
+        assertEquals(existing.content, viewModel.state.value.content.text)
+    }
+
+    @Test
+    fun `given note without spans when loaded and edited then stays plain text`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.contentSpans.isEmpty())
+        assertTrue(viewModel.state.value.activeFormats.isEmpty())
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content + "!")))
+        advanceUntilIdle()
+
+        assertTrue(repository.notes.getValue(existing.id).contentSpans.isEmpty())
+    }
+
     private class InMemoryNoteRepository : NoteRepository {
         val notes = linkedMapOf<Long, Note>()
         var failure: NoteError? = null
@@ -674,6 +947,7 @@ class NoteEditorViewModelTest {
 
     private companion object {
         const val NOW = 1_700_000_000_000L
+        const val TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1_000L
         const val URI_A = "content://media/picker/a"
         const val URI_B = "content://media/picker/b"
 
