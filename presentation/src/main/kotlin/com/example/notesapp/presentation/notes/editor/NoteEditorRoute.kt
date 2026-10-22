@@ -1,19 +1,24 @@
 package com.example.notesapp.presentation.notes.editor
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.notesapp.domain.notes.NoteColor
 
 @Composable
 fun NoteEditorRoute(
@@ -44,6 +49,19 @@ fun NoteEditorRoute(
                 is NoteEditorEffect.ShowMessage ->
                     snackbarHostState.showSnackbar(context.getString(effect.messageRes))
             }
+        }
+    }
+
+    // Sobre el color de la nota, los íconos de la barra de estado pasan a oscuros; al salir se restauran.
+    val useDarkStatusBarIcons = state.isNoteVisible && state.color != NoteColor.NONE
+    val window = LocalActivity.current?.window
+    val view = LocalView.current
+    DisposableEffect(window, useDarkStatusBarIcons) {
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previous = controller?.isAppearanceLightStatusBars
+        controller?.isAppearanceLightStatusBars = useDarkStatusBarIcons
+        onDispose {
+            if (controller != null && previous != null) controller.isAppearanceLightStatusBars = previous
         }
     }
 

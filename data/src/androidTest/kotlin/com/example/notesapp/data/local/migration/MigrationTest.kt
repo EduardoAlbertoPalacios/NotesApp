@@ -57,7 +57,7 @@ class MigrationTest {
             ApplicationProvider.getApplicationContext(),
             NotesDatabase::class.java,
             TEST_DB,
-        ).build()
+        ).addMigrations(*ALL_MIGRATIONS).build()
         val note = database.noteDao().getById(1)
         database.close()
 
@@ -104,14 +104,14 @@ class MigrationTest {
             ApplicationProvider.getApplicationContext(),
             NotesDatabase::class.java,
             TEST_DB,
-        ).build()
+        ).addMigrations(*ALL_MIGRATIONS).build()
         val dao = database.noteDao()
         dao.insertImages(listOf(NoteImageEntity(noteId = 1, path = "/a.jpg")))
         val note = dao.getById(1)
         val version = database.openHelper.readableDatabase.version
         database.close()
 
-        assertEquals(4, version)
+        assertEquals(5, version)
         assertEquals("Ideas", note?.note?.title)
         assertEquals("", note?.note?.contentSpans)
         assertEquals(listOf("/a.jpg"), note?.images?.map { it.path })
@@ -160,12 +160,66 @@ class MigrationTest {
             ApplicationProvider.getApplicationContext(),
             NotesDatabase::class.java,
             TEST_DB,
-        ).build()
+        ).addMigrations(*ALL_MIGRATIONS).build()
         val note = database.noteDao().getById(1)
         database.close()
 
         assertEquals("Libreta", note?.note?.content)
         assertEquals("", note?.note?.contentSpans)
+    }
+
+    @Test
+    fun given_v4_database_with_notes_when_migrating_to_v5_then_sand_becomes_vanilla_and_the_rest_is_kept() {
+        helper.createDatabase(TEST_DB, 4).apply {
+            execSQL(INSERT_V4_SAND_NOTE)
+            execSQL(INSERT_V4_AQUA_NOTE)
+            execSQL(INSERT_V4_ROSE_NOTE)
+            execSQL(INSERT_V3_IMAGE)
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 5, true, MIGRATION_4_5)
+
+        db.query(
+            "SELECT id, title, content, color, is_pinned, updated_at, category, content_spans FROM notes ORDER BY id",
+        ).use { cursor ->
+            assertEquals(3, cursor.count)
+            cursor.moveToNext()
+            assertEquals(1L, cursor.getLong(0))
+            assertEquals("Ideas", cursor.getString(1))
+            assertEquals("Libreta", cursor.getString(2))
+            assertEquals("VANILLA", cursor.getString(3))
+            assertEquals(1, cursor.getInt(4))
+            assertEquals(5L, cursor.getLong(5))
+            assertEquals("WORK", cursor.getString(6))
+            assertEquals("0,3,B", cursor.getString(7))
+            cursor.moveToNext()
+            assertEquals(2L, cursor.getLong(0))
+            assertEquals("Compra", cursor.getString(1))
+            assertEquals("Pan", cursor.getString(2))
+            assertEquals("AQUA", cursor.getString(3))
+            assertEquals(0, cursor.getInt(4))
+            assertEquals(6L, cursor.getLong(5))
+            assertTrue(cursor.isNull(6))
+            assertEquals("", cursor.getString(7))
+            cursor.moveToNext()
+            assertEquals(3L, cursor.getLong(0))
+            assertEquals("Viaje", cursor.getString(1))
+            assertEquals("Maleta", cursor.getString(2))
+            assertEquals("ROSE", cursor.getString(3))
+            assertEquals(0, cursor.getInt(4))
+            assertEquals(7L, cursor.getLong(5))
+            assertEquals("PERSONAL", cursor.getString(6))
+            assertEquals("", cursor.getString(7))
+        }
+        db.query("SELECT id, note_id, path FROM note_images").use { cursor ->
+            assertEquals(1, cursor.count)
+            cursor.moveToFirst()
+            assertEquals(1L, cursor.getLong(0))
+            assertEquals(1L, cursor.getLong(1))
+            assertEquals("/a.jpg", cursor.getString(2))
+        }
+        db.close()
     }
 
     private companion object {
@@ -178,5 +232,14 @@ class MigrationTest {
                 "VALUES (1, 'Ideas', 'Libreta', 'SAND', 1, 5, 'WORK')"
         const val INSERT_V3_IMAGE =
             "INSERT INTO note_images (id, note_id, path) VALUES (1, 1, '/a.jpg')"
+        const val INSERT_V4_SAND_NOTE =
+            "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category, content_spans) " +
+                "VALUES (1, 'Ideas', 'Libreta', 'SAND', 1, 5, 'WORK', '0,3,B')"
+        const val INSERT_V4_AQUA_NOTE =
+            "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category, content_spans) " +
+                "VALUES (2, 'Compra', 'Pan', 'AQUA', 0, 6, NULL, '')"
+        const val INSERT_V4_ROSE_NOTE =
+            "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category, content_spans) " +
+                "VALUES (3, 'Viaje', 'Maleta', 'ROSE', 0, 7, 'PERSONAL', '')"
     }
 }

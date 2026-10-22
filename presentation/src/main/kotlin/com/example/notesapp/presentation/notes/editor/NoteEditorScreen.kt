@@ -75,8 +75,10 @@ import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.notes.common.AppColorsTheme
 import com.example.notesapp.presentation.notes.common.FormattedContentTransformation
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
+import com.example.notesapp.presentation.notes.common.NoteSurfaceTheme
 import com.example.notesapp.presentation.notes.common.asText
 import com.example.notesapp.presentation.notes.common.toContainerColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
@@ -97,10 +99,16 @@ object NoteEditorTestTags {
     const val CATEGORY_OPTION = "note_editor_category_"
     const val TOOLBAR_IMAGE = "note_editor_toolbar_image"
     const val TOOLBAR_FORMAT = "note_editor_toolbar_format"
+    const val TOOLBAR_COLOR = "note_editor_toolbar_color"
     const val FORMAT_MENU = "note_editor_format_menu"
     const val FORMAT_OPTION = "note_editor_format_"
     const val IMAGE = "note_editor_image_"
     const val REMOVE_IMAGE = "note_editor_remove_image_"
+    const val COLOR_SHEET = "note_editor_color_sheet"
+    const val COLOR_OPTION = "note_editor_color_"
+    const val COLOR_PREVIEW = "note_editor_color_preview"
+    const val COLOR_APPLY = "note_editor_color_apply"
+    const val COLOR_CLOSE = "note_editor_color_close"
 }
 
 @Composable
@@ -110,34 +118,43 @@ fun NoteEditorScreen(
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            // Incluye el teclado: el contenido y el estado de guardado quedan por encima de él.
-            .windowInsetsPadding(WindowInsets.safeDrawing),
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            NoteEditorTopBar(
-                isPinned = state.isPinned,
-                showNoteActions = !state.isLoading && state.loadError == null,
-                onIntent = onIntent,
-            )
-            when {
-                state.isLoading -> LoadingState(modifier = Modifier.weight(1f))
-                state.loadError != null -> LoadErrorState(error = state.loadError, modifier = Modifier.weight(1f))
-                else -> {
-                    NoteContent(state = state, onIntent = onIntent, modifier = Modifier.weight(1f))
-                    SaveStatusRow(status = state.saveStatus)
-                    EditorToolbar(state = state, onIntent = onIntent)
+    // Mientras carga, el estado aún no tiene el color de la nota: se usa el fondo de la app.
+    NoteSurfaceTheme(color = if (state.isNoteVisible) state.color else NoteColor.NONE) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                // Incluye el teclado: el contenido y el estado de guardado quedan por encima de él.
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                NoteEditorTopBar(
+                    isPinned = state.isPinned,
+                    showNoteActions = state.isNoteVisible,
+                    onIntent = onIntent,
+                )
+                when {
+                    state.isLoading -> LoadingState(modifier = Modifier.weight(1f))
+                    state.loadError != null -> LoadErrorState(error = state.loadError, modifier = Modifier.weight(1f))
+                    else -> {
+                        NoteContent(state = state, onIntent = onIntent, modifier = Modifier.weight(1f))
+                        SaveStatusRow(status = state.saveStatus)
+                        // La barra flota sobre el color de la nota con el tema oscuro de la app.
+                        AppColorsTheme {
+                            EditorToolbar(state = state, onIntent = onIntent)
+                        }
+                    }
                 }
             }
+            SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
         }
-        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     }
 
     if (state.isDeleteDialogVisible) {
         DeleteNoteDialog(onIntent = onIntent)
+    }
+    state.pickerColor?.let { pickerColor ->
+        NoteColorSheet(noteTitle = state.title, pickerColor = pickerColor, onIntent = onIntent)
     }
 }
 
@@ -165,7 +182,8 @@ private fun NoteEditorTopBar(
         if (showNoteActions) {
             Row(horizontalArrangement = Arrangement.spacedBy(NotesTheme.spacing.xxs)) {
                 EditorIconButton(
-                    iconRes = R.drawable.ic_pin_outline,
+                    // Relleno al estar fijada: sobre el color de la nota, el color de acento no la distingue.
+                    iconRes = if (isPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin_outline,
                     contentDescription = stringResource(
                         if (isPinned) R.string.note_editor_unpin else R.string.note_editor_pin,
                     ),
@@ -192,19 +210,21 @@ private fun MoreOptions(
             onClick = { isExpanded = true },
             modifier = Modifier.testTag(NoteEditorTestTags.MORE),
         )
-        DropdownMenu(
-            expanded = isExpanded,
-            onDismissRequest = { isExpanded = false },
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ) {
-            DropdownMenuItem(
-                text = { Text(text = stringResource(R.string.note_editor_delete)) },
-                onClick = {
-                    isExpanded = false
-                    onIntent(NoteEditorIntent.DeleteClicked)
-                },
-                modifier = Modifier.testTag(NoteEditorTestTags.DELETE),
-            )
+        AppColorsTheme {
+            DropdownMenu(
+                expanded = isExpanded,
+                onDismissRequest = { isExpanded = false },
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.note_editor_delete)) },
+                    onClick = {
+                        isExpanded = false
+                        onIntent(NoteEditorIntent.DeleteClicked)
+                    },
+                    modifier = Modifier.testTag(NoteEditorTestTags.DELETE),
+                )
+            }
         }
     }
 }
@@ -508,28 +528,31 @@ private fun NoteImageItem(
                 .testTag(NoteEditorTestTags.IMAGE + image.id),
             contentScale = ContentScale.FillWidth,
         )
-        FilledIconButton(
-            onClick = onRemove,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(NotesTheme.spacing.s)
-                .size(NotesTheme.sizes.imageAction)
-                .testTag(NoteEditorTestTags.REMOVE_IMAGE + image.id),
-            shape = CircleShape,
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                contentColor = MaterialTheme.colorScheme.onBackground,
-            ),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_close),
-                contentDescription = stringResource(R.string.note_editor_image_remove),
-            )
+        // Va sobre la imagen, no sobre el color de la nota: conserva el tema oscuro de la app.
+        AppColorsTheme {
+            FilledIconButton(
+                onClick = onRemove,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(NotesTheme.spacing.s)
+                    .size(NotesTheme.sizes.imageAction)
+                    .testTag(NoteEditorTestTags.REMOVE_IMAGE + image.id),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    contentColor = MaterialTheme.colorScheme.onBackground,
+                ),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_close),
+                    contentDescription = stringResource(R.string.note_editor_image_remove),
+                )
+            }
         }
     }
 }
 
-/** Barra de edición del diseño. Por ahora solo "Agregar imagen" funciona; el resto se muestra deshabilitado. */
+/** Barra de edición del diseño. Funcionan formato, "Agregar imagen" y color; el resto se muestra deshabilitado. */
 @Composable
 private fun EditorToolbar(
     state: NoteEditorUiState,
@@ -573,17 +596,34 @@ private fun EditorToolbar(
         )
         ToolbarButton(R.drawable.ic_undo, R.string.note_editor_toolbar_undo)
         val colorLabel = stringResource(R.string.note_editor_toolbar_color)
-        Box(
+        val noteColors = NotesTheme.noteColors
+        IconButton(
+            onClick = { onIntent(NoteEditorIntent.ColorButtonClicked) },
             modifier = Modifier
                 .size(NotesTheme.sizes.iconAction)
-                .semantics { contentDescription = colorLabel },
-            contentAlignment = Alignment.Center,
+                .semantics { contentDescription = colorLabel }
+                .testTag(NoteEditorTestTags.TOOLBAR_COLOR),
         ) {
+            // «Sin color» usa la muestra del selector, con su barra, para no confundirse con el fondo de la barra.
             Box(
                 modifier = Modifier
                     .size(NotesTheme.sizes.colorDot)
-                    .background(state.color.toContainerColor(), CircleShape),
-            )
+                    .background(
+                        if (state.color == NoteColor.NONE) noteColors.swatch else state.color.toContainerColor(),
+                        CircleShape,
+                    )
+                    .border(NotesTheme.sizes.border, noteColors.swatchBorder, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (state.color == NoteColor.NONE) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_slash),
+                        contentDescription = null,
+                        modifier = Modifier.size(NotesTheme.sizes.colorDotIcon),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
@@ -785,6 +825,32 @@ private fun NoteEditorScreenPreview() {
             ),
             onIntent = {},
         )
+    }
+}
+
+private val ColorPreviewState = NoteEditorUiState(
+    isNewNote = false,
+    title = "Reunión de equipo",
+    content = TextFieldValue("Ideas y próximos pasos para el nuevo lanzamiento. Menos ruido, más foco."),
+    contentSpans = listOf(FormatSpan(0, 22, TextFormat.BOLD)),
+    category = NoteCategory.PERSONAL,
+    date = NoteDateLabel.Today("9:38"),
+    saveStatus = SaveStatus.Saved,
+)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteEditorScreenRosePreview() {
+    NotesAppTheme {
+        NoteEditorScreen(state = ColorPreviewState.copy(color = NoteColor.ROSE), onIntent = {})
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteEditorScreenNoColorPreview() {
+    NotesAppTheme {
+        NoteEditorScreen(state = ColorPreviewState.copy(color = NoteColor.NONE), onIntent = {})
     }
 }
 

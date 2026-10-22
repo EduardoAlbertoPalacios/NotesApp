@@ -53,7 +53,7 @@ class NoteEditorViewModel @Inject constructor(
     private val _effects = Channel<NoteEditorEffect>(Channel.BUFFERED)
     val effects: Flow<NoteEditorEffect> = _effects.receiveAsFlow()
 
-    /** Última versión guardada (o la nota nueva aún sin guardar): conserva id y color. */
+    /** Última versión guardada (o la nota nueva aún sin guardar): conserva el id. */
     private var note = Note(
         id = Note.NEW_ID,
         title = "",
@@ -94,6 +94,10 @@ class NoteEditorViewModel @Inject constructor(
             is NoteEditorIntent.CategoryClicked -> saveNow {
                 it.copy(category = intent.category.takeIf { category -> category != it.category })
             }
+            NoteEditorIntent.ColorButtonClicked -> _state.update { it.copy(pickerColor = it.color) }
+            is NoteEditorIntent.PickerColorSelected -> _state.update { it.copy(pickerColor = intent.color) }
+            NoteEditorIntent.ColorApplied -> applyColor()
+            NoteEditorIntent.ColorPickerDismissed -> _state.update { it.copy(pickerColor = null) }
             NoteEditorIntent.DeleteClicked -> _state.update { it.copy(isDeleteDialogVisible = true) }
             NoteEditorIntent.DeleteDismissed -> _state.update { it.copy(isDeleteDialogVisible = false) }
             NoteEditorIntent.DeleteConfirmed -> delete()
@@ -185,7 +189,21 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
-    /** Cambios de un toque (fijar, categoría): se guardan al momento, sin esperar al autoguardado. */
+    /**
+     * Aplica la opción del selector y lo cierra. Solo guarda si el color cambió, así que aplicar el mismo
+     * no cambia la fecha de edición. Una nota nueva vacía no se guarda: el color viaja en el siguiente guardado.
+     */
+    private fun applyColor() {
+        val current = _state.value
+        val picked = current.pickerColor ?: return
+        if (picked == current.color) {
+            _state.update { it.copy(pickerColor = null) }
+        } else {
+            saveNow { it.copy(color = picked, pickerColor = null) }
+        }
+    }
+
+    /** Cambios de un toque (fijar, categoría, color): se guardan al momento, sin esperar al autoguardado. */
     private fun saveNow(transform: (NoteEditorUiState) -> NoteEditorUiState) {
         _state.update(transform)
         hasPendingChanges = true
@@ -202,6 +220,7 @@ class NoteEditorViewModel @Inject constructor(
             contentSpans = current.contentSpans,
             isPinned = current.isPinned,
             category = current.category,
+            color = current.color,
         )
         _state.update { it.copy(saveStatus = SaveStatus.Saving) }
         when (val result = saveNote(draft)) {
@@ -227,7 +246,7 @@ class NoteEditorViewModel @Inject constructor(
     /** Si el estado tiene cambios que la última versión guardada ([note]) todavía no incluye. */
     private fun hasUnsavedChanges(): Boolean = _state.value.run {
         title != note.title || content.text != note.content || isPinned != note.isPinned ||
-            category != note.category || contentSpans != note.contentSpans
+            category != note.category || contentSpans != note.contentSpans || color != note.color
     }
 
     private fun addImages(uris: List<String>) {
@@ -242,6 +261,7 @@ class NoteEditorViewModel @Inject constructor(
                     contentSpans = current.contentSpans,
                     isPinned = current.isPinned,
                     category = current.category,
+                    color = current.color,
                 )
                 when (val result = addNoteImages(draft, uris)) {
                     is AppResult.Success -> {

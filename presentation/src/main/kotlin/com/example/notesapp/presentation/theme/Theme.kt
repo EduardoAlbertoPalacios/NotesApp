@@ -10,7 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 private val DarkColorScheme = darkColorScheme(
     primary = Aqua,
     onPrimary = Ink,
-    secondary = Sand,
+    secondary = Vanilla,
     tertiary = Mint,
     background = Black,
     onBackground = Snow,

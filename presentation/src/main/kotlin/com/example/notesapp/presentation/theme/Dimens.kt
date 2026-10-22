@@ -18,6 +18,10 @@ data class Spacing(
     val xl: Dp = 20.dp,
     val xxl: Dp = 22.dp,
     val screen: Dp = 24.dp,
+    /** Separación entre secciones de la hoja de color. */
+    val sheetSection: Dp = 18.dp,
+    /** Separación entre las dos líneas de la vista previa de color. */
+    val previewLines: Dp = 7.dp,
 )
 
 @Immutable
@@ -30,8 +34,17 @@ data class Sizes(
     val border: Dp = 1.dp,
     val toolbarHeight: Dp = 64.dp,
     val colorDot: Dp = 24.dp,
+    val colorDotIcon: Dp = 12.dp,
     val imageAction: Dp = 36.dp,
     val listImageHeight: Dp = 120.dp,
+    val sheetHandleWidth: Dp = 36.dp,
+    val sheetHandleHeight: Dp = 4.dp,
+    val sheetButtonHeight: Dp = 50.dp,
+    val colorOptionWidth: Dp = 76.dp,
+    val colorSwatch: Dp = 50.dp,
+    val colorSwatchSelectedBorder: Dp = 2.dp,
+    val colorSwatchIcon: Dp = 20.dp,
+    val colorCheckIcon: Dp = 22.dp,
 )
 
 @Immutable
@@ -41,4 +54,5 @@ data class Radii(
     val fab: Dp = 20.dp,
     val pill: Dp = 28.dp,
     val toolbar: Dp = 24.dp,
+    val sheetHandle: Dp = 2.dp,
 )

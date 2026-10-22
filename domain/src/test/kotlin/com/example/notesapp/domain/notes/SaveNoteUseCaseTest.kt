@@ -73,6 +73,39 @@ class SaveNoteUseCaseTest {
     }
 
     @Test
+    fun `given note without color when saving then keeps none color and updates its edit time`() = runTest {
+        val uncolored = note(id = 7, color = NoteColor.NONE, updatedAt = 500)
+
+        val result = saveNote(uncolored)
+
+        val expected = uncolored.copy(updatedAt = NOW)
+        assertEquals(listOf(expected), repository.saved)
+        assertEquals(AppResult.Success(expected), result)
+    }
+
+    @Test
+    fun `given note with vanilla color when saving then keeps its color and updates its edit time`() = runTest {
+        val vanilla = note(id = 7, color = NoteColor.VANILLA, updatedAt = 500)
+
+        val result = saveNote(vanilla)
+
+        val expected = vanilla.copy(updatedAt = NOW)
+        assertEquals(listOf(expected), repository.saved)
+        assertEquals(AppResult.Success(expected), result)
+    }
+
+    @Test
+    fun `given note with sand color when saving then keeps its color and updates its edit time`() = runTest {
+        val sand = note(id = 7, color = NoteColor.SAND, updatedAt = 500)
+
+        val result = saveNote(sand)
+
+        val expected = sand.copy(updatedAt = NOW)
+        assertEquals(listOf(expected), repository.saved)
+        assertEquals(AppResult.Success(expected), result)
+    }
+
+    @Test
     fun `given storage failure when saving then returns the error`() = runTest {
         repository.failure = NoteError.Storage
 
@@ -85,11 +118,12 @@ class SaveNoteUseCaseTest {
         content: String = "",
         updatedAt: Long = 0,
         contentSpans: List<FormatSpan> = emptyList(),
+        color: NoteColor = NoteColor.AQUA,
     ) = Note(
         id = id,
         title = title,
         content = content,
-        color = NoteColor.AQUA,
+        color = color,
         isPinned = false,
         category = null,
         updatedAt = updatedAt,

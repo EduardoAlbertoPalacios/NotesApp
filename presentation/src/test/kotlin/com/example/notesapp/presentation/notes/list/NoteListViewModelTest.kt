@@ -233,6 +233,15 @@ class NoteListViewModelTest {
     }
 
     @Test
+    fun `given note without color when loaded then ui item has color none`() = runTest {
+        val viewModel = createViewModel()
+
+        notes.emit(AppResult.Success(listOf(note(id = 1, color = NoteColor.NONE))))
+
+        assertEquals(NoteColor.NONE, viewModel.state.value.notes.single().color)
+    }
+
+    @Test
     fun `given note with images when loaded then image path is its first image`() = runTest {
         val viewModel = createViewModel()
 
@@ -516,11 +525,12 @@ class NoteListViewModelTest {
         category: NoteCategory? = null,
         images: List<NoteImage> = emptyList(),
         contentSpans: List<FormatSpan> = emptyList(),
+        color: NoteColor = NoteColor.MINT,
     ) = Note(
         id = id,
         title = title,
         content = content,
-        color = NoteColor.MINT,
+        color = color,
         isPinned = isPinned,
         category = category,
         updatedAt = updatedAt,

@@ -203,6 +203,15 @@ class NoteDaoTest {
         assertEquals("", dao.getById(id)?.note?.contentSpans)
     }
 
+    @Test
+    fun given_note_without_color_when_inserted_then_reads_it_unchanged() = runTest {
+        val note = noteEntity().copy(color = "NONE")
+
+        val id = dao.insert(note)
+
+        assertEquals(note.copy(id = id), dao.getById(id)?.note)
+    }
+
     /** Lee la tabla directamente para comprobar que no quedan filas huérfanas. */
     private fun imagesInTable(): List<Pair<Long, String>> =
         database.query("SELECT note_id, path FROM note_images", null).use { cursor ->
