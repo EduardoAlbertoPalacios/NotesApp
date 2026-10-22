@@ -10,7 +10,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
 - Constitución del proyecto en `docs/constitution.md`; specs en `docs/specs/NNN-nombre/spec.md`.
 - **Búsqueda** (spec 001, PR #2) y **formato de texto** (spec 002, PR #3), en `main`.
-- **Color de la nota** (spec 003, rama `feat/note-color`, Figma `4:1710`): implementado y verificado en emulador; falta el commit.
+- **Color de la nota** (spec 003, rama `feat/note-color`, Figma `4:1710`): implementado, verificado en emulador y con PR hacia `main`.
 - Pendiente en Figma: Ajustes (`4:1794`).
 
 ## Decisiones (y por qué)
@@ -47,6 +47,6 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Próximos pasos
 - Corregir el error de lint preexistente del editor.
-- Commit y PR de la spec 003 (color de la nota).
+- Merge del PR de la spec 003 (color de la nota).
 - Pantalla de Ajustes (`4:1794`).
 - Prueba de flujo completo con `HiltTestRunner` + `@TestInstallIn` (aún no existe).
