@@ -2,6 +2,7 @@ package com.example.notesapp.presentation.notes.editor
 
 import androidx.compose.ui.text.input.TextFieldValue
 import com.example.notesapp.domain.notes.NoteCategory
+import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.TextFormat
 
@@ -17,6 +18,12 @@ sealed interface NoteEditorIntent {
     data class FormatSelected(val format: TextFormat) : NoteEditorIntent
     /** Elegir la categoría ya seleccionada la quita. */
     data class CategoryClicked(val category: NoteCategory) : NoteEditorIntent
+    data object ColorButtonClicked : NoteEditorIntent
+    /** Elegir una opción en el selector no cambia el color de la nota hasta aplicarla. */
+    data class PickerColorSelected(val color: NoteColor) : NoteEditorIntent
+    data object ColorApplied : NoteEditorIntent
+    /** Cerrar el selector sin aplicar descarta la opción elegida. */
+    data object ColorPickerDismissed : NoteEditorIntent
     data object DeleteClicked : NoteEditorIntent
     data object DeleteConfirmed : NoteEditorIntent
     data object DeleteDismissed : NoteEditorIntent

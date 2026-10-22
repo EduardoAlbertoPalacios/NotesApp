@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.example.notesapp.data.local.NoteDao
 import com.example.notesapp.data.local.NotesDatabase
 import com.example.notesapp.data.local.SeedNotesCallback
+import com.example.notesapp.data.local.migration.ALL_MIGRATIONS
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -20,6 +21,7 @@ internal object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): NotesDatabase =
         Room.databaseBuilder(context, NotesDatabase::class.java, NotesDatabase.NAME)
+            .addMigrations(*ALL_MIGRATIONS)
             .addCallback(SeedNotesCallback())
             .build()
 

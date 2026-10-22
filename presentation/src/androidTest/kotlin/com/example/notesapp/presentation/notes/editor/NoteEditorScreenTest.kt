@@ -5,6 +5,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import com.example.notesapp.domain.notes.NoteColor
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -361,10 +370,176 @@ class NoteEditorScreenTest {
             .assert(hasStateDescription(active))
     }
 
+    @Test
+    fun given_editor_when_color_button_clicked_then_sends_color_button_clicked() {
+        setContent(NoteEditorUiState(title = "Ideas"))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_COLOR)
+            .assertContentDescriptionEquals(string(R.string.note_editor_toolbar_color))
+            .assertIsEnabled()
+            .performClick()
+
+        assertEquals(listOf<NoteEditorIntent>(NoteEditorIntent.ColorButtonClicked), userIntents)
+    }
+
+    @Test
+    fun given_picker_color_null_when_displayed_then_color_sheet_is_hidden() {
+        setContent(NoteEditorUiState(title = "Ideas", pickerColor = null))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_SHEET).assertDoesNotExist()
+    }
+
+    @Test
+    fun given_picker_color_when_displayed_then_sheet_shows_title_description_and_eight_options_with_labels() {
+        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.AQUA))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_SHEET).assertIsDisplayed()
+        composeRule.onNode(hasText(string(R.string.note_editor_toolbar_color)) and inColorSheet).assertIsDisplayed()
+        composeRule.onNode(hasText(string(R.string.note_color_sheet_description)) and inColorSheet).assertIsDisplayed()
+        composeRule.onAllNodes(hasRole(Role.RadioButton) and inColorSheet).assertCountEquals(NoteColor.entries.size)
+        colorLabels.forEach { (color, labelRes) ->
+            colorOption(color).assertIsDisplayed().assertTextEquals(string(labelRes))
+        }
+    }
+
+    @Test
+    fun given_picker_color_when_displayed_then_options_follow_palette_order_in_two_rows_of_four() {
+        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.AQUA))
+
+        val bounds = NoteColor.entries.map { colorOption(it).getUnclippedBoundsInRoot() }
+
+        val (firstRow, secondRow) = bounds.chunked(4)
+        listOf(firstRow, secondRow).forEach { row ->
+            assertTrue(row.all { it.top == row.first().top })
+            assertTrue(row.zipWithNext().all { (left, right) -> left.right <= right.left })
+        }
+        assertTrue(firstRow.first().bottom <= secondRow.first().top)
+    }
+
+    @Test
+    fun given_picker_color_when_displayed_then_only_that_option_is_selected() {
+        setContent(NoteEditorUiState(title = "Ideas", color = NoteColor.AQUA, pickerColor = NoteColor.LAVENDER))
+
+        colorOption(NoteColor.LAVENDER).assertIsSelected()
+        NoteColor.entries.filter { it != NoteColor.LAVENDER }.forEach { color ->
+            colorOption(color).assertIsNotSelected()
+        }
+    }
+
+    @Test
+    fun given_picker_color_none_when_displayed_then_none_option_is_selected() {
+        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.NONE))
+
+        colorOption(NoteColor.NONE).assertIsSelected()
+        colorOption(NoteColor.AQUA).assertIsNotSelected()
+    }
+
+    @Test
+    fun given_color_sheet_when_option_clicked_then_sends_picker_color_selected() {
+        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.AQUA))
+
+        colorOption(NoteColor.ROSE).performClick()
+        colorOption(NoteColor.NONE).performClick()
+
+        assertEquals(
+            listOf(
+                NoteEditorIntent.PickerColorSelected(NoteColor.ROSE),
+                NoteEditorIntent.PickerColorSelected(NoteColor.NONE),
+            ),
+            userIntents,
+        )
+    }
+
+    @Test
+    fun given_note_with_title_when_sheet_displayed_then_preview_shows_title_and_color_caption() {
+        setContent(NoteEditorUiState(title = "Reunión de equipo", pickerColor = NoteColor.PEACH))
+
+        composeRule.onNode(hasText("Reunión de equipo") and inColorPreview).assertIsDisplayed()
+        composeRule.onNode(hasText(string(R.string.note_color_preview_untitled)) and inColorPreview).assertDoesNotExist()
+        composeRule.onNode(
+            hasText(string(R.string.note_color_preview_caption, string(R.string.note_color_peach))) and inColorPreview,
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun given_note_without_title_when_sheet_displayed_then_preview_shows_untitled_and_color_caption() {
+        setContent(NoteEditorUiState(title = "", pickerColor = NoteColor.NONE))
+
+        composeRule.onNode(hasText(string(R.string.note_color_preview_untitled)) and inColorPreview).assertIsDisplayed()
+        composeRule.onNode(
+            hasText(string(R.string.note_color_preview_caption, string(R.string.note_color_none))) and inColorPreview,
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun given_color_sheet_when_apply_clicked_then_sends_color_applied_after_closing() {
+        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.MINT))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_APPLY)
+            .assertTextEquals(string(R.string.note_color_apply))
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = SHEET_TIMEOUT_MS) { userIntents.isNotEmpty() }
+        composeRule.waitForIdle()
+
+        assertEquals(listOf<NoteEditorIntent>(NoteEditorIntent.ColorApplied), userIntents)
+    }
+
+    @Test
+    fun given_color_sheet_when_close_clicked_then_sends_color_picker_dismissed_after_closing() {
+        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.MINT))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_CLOSE).performClick()
+        composeRule.waitUntil(timeoutMillis = SHEET_TIMEOUT_MS) { userIntents.isNotEmpty() }
+        composeRule.waitForIdle()
+
+        assertEquals(listOf<NoteEditorIntent>(NoteEditorIntent.ColorPickerDismissed), userIntents)
+    }
+
+    @Test
+    fun given_color_sheet_when_displayed_then_options_and_close_have_accessible_labels() {
+        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.AQUA))
+
+        colorLabels.forEach { (color, labelRes) ->
+            colorOption(color)
+                .assert(hasRole(Role.RadioButton))
+                .assert(hasText(string(labelRes)))
+                .assertHasClickAction()
+        }
+        composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_CLOSE)
+            .assertContentDescriptionEquals(string(R.string.note_color_close))
+            .assertHasClickAction()
+    }
+
+    private fun colorOption(color: NoteColor) = composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_OPTION + color.name)
+
+    private val inColorSheet = hasAnyAncestor(hasTestTag(NoteEditorTestTags.COLOR_SHEET))
+
+    private val inColorPreview = hasAnyAncestor(hasTestTag(NoteEditorTestTags.COLOR_PREVIEW))
+
+    private fun hasRole(role: Role) = SemanticsMatcher.expectValue(SemanticsProperties.Role, role)
+
+    private val colorLabels = mapOf(
+        NoteColor.NONE to R.string.note_color_none,
+        NoteColor.AQUA to R.string.note_color_aqua,
+        NoteColor.ROSE to R.string.note_color_rose,
+        NoteColor.VANILLA to R.string.note_color_vanilla,
+        NoteColor.LAVENDER to R.string.note_color_lavender,
+        NoteColor.MINT to R.string.note_color_mint,
+        NoteColor.PEACH to R.string.note_color_peach,
+        NoteColor.SAND to R.string.note_color_sand,
+    )
+
     private fun hasStateDescription(value: String) = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, value)
 
     private val firstImage = NoteImage(id = 1, path = "/no/existe/a.jpg")
     private val secondImage = NoteImage(id = 2, path = "/no/existe/b.jpg")
 
     private fun string(id: Int): String = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
+
+    private fun string(id: Int, vararg args: Any): String =
+        InstrumentationRegistry.getInstrumentation().targetContext.getString(id, *args)
+
+    private companion object {
+        const val SHEET_TIMEOUT_MS = 5_000L
+    }
 }

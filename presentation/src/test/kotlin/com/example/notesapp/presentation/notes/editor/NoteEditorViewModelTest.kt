@@ -884,11 +884,211 @@ class NoteEditorViewModelTest {
         assertTrue(repository.notes.getValue(existing.id).contentSpans.isEmpty())
     }
 
+    @Test
+    fun `given new note when color button clicked then opens the picker with the current color`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+
+        assertEquals(NoteColor.AQUA, viewModel.state.value.pickerColor)
+        assertEquals(NoteColor.AQUA, viewModel.state.value.color)
+    }
+
+    @Test
+    fun `given existing note with other color when color button clicked then opens the picker with its color`() =
+        runTest {
+            repository.notes[existing.id] = existing.copy(color = NoteColor.SAND)
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+
+            viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+
+            assertEquals(NoteColor.SAND, viewModel.state.value.pickerColor)
+        }
+
+    @Test
+    fun `given open picker when other color selected then only changes the picker without saving`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.MINT))
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.MINT, viewModel.state.value.pickerColor)
+        assertEquals(NoteColor.ROSE, viewModel.state.value.color)
+        assertEquals(0, repository.saveCount)
+        assertEquals(existing, repository.notes[existing.id])
+    }
+
+    @Test
+    fun `given saved note when other color applied then assigns it closes the picker and saves once`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        repository.notes[old.id] = old
+        val viewModel = createViewModel(old.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.LAVENDER))
+
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(NoteColor.LAVENDER, state.color)
+        assertEquals(null, state.pickerColor)
+        assertEquals(1, repository.saveCount)
+        assertEquals(old.copy(color = NoteColor.LAVENDER, updatedAt = NOW), repository.notes[old.id])
+        assertEquals(dateFormatter.format(NOW), state.date)
+        assertEquals(SaveStatus.Saved, state.saveStatus)
+    }
+
+    @Test
+    fun `given saved note when same color applied then closes the picker without saving`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        repository.notes[old.id] = old
+        val viewModel = createViewModel(old.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.MINT))
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.ROSE))
+
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(NoteColor.ROSE, state.color)
+        assertEquals(null, state.pickerColor)
+        assertEquals(0, repository.saveCount)
+        assertEquals(old, repository.notes[old.id])
+        assertEquals(dateFormatter.format(old.updatedAt), state.date)
+        assertEquals(SaveStatus.Idle, state.saveStatus)
+    }
+
+    @Test
+    fun `given other color selected when picker dismissed then keeps the color without saving`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.PEACH))
+
+        viewModel.onIntent(NoteEditorIntent.ColorPickerDismissed)
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.ROSE, viewModel.state.value.color)
+        assertEquals(null, viewModel.state.value.pickerColor)
+        assertEquals(0, repository.saveCount)
+        assertEquals(existing, repository.notes[existing.id])
+    }
+
+    @Test
+    fun `given dismissed color choice when picker reopened then shows the current color`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.PEACH))
+        viewModel.onIntent(NoteEditorIntent.ColorPickerDismissed)
+
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+
+        assertEquals(NoteColor.ROSE, viewModel.state.value.pickerColor)
+    }
+
+    @Test
+    fun `given blank new note when color applied then no note is stored`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.VANILLA))
+
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+
+        assertTrue(repository.notes.isEmpty())
+        assertEquals(NoteColor.VANILLA, viewModel.state.value.color)
+        assertEquals(null, viewModel.state.value.pickerColor)
+        assertEquals(null, viewModel.state.value.date)
+    }
+
+    @Test
+    fun `given color applied to blank new note when title typed then saves the note with that color`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.VANILLA))
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.TitleChanged("Recetas"))
+        advanceUntilIdle()
+
+        val stored = repository.notes.values.single()
+        assertEquals("Recetas", stored.title)
+        assertEquals(NoteColor.VANILLA, stored.color)
+    }
+
+    @Test
+    fun `given note with lavender color when loaded then exposes its color`() = runTest {
+        repository.notes[existing.id] = existing.copy(color = NoteColor.LAVENDER)
+
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.LAVENDER, viewModel.state.value.color)
+        assertEquals(null, viewModel.state.value.pickerColor)
+    }
+
+    @Test
+    fun `given note without color when loaded then exposes none`() = runTest {
+        repository.notes[existing.id] = existing.copy(color = NoteColor.NONE)
+
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.NONE, viewModel.state.value.color)
+    }
+
+    @Test
+    fun `given color applied to blank new note when images picked then stores the note with that color`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.MINT))
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+
+        val stored = repository.notes.values.single()
+        assertEquals(NoteColor.MINT, stored.color)
+        assertEquals(listOf(copyOf(URI_A)), stored.images.map { it.path })
+        assertEquals(NoteColor.MINT, viewModel.state.value.color)
+    }
+
+    @Test
+    fun `given color applied to existing note when images picked then keeps that color`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.PEACH))
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_B)))
+        advanceUntilIdle()
+
+        val stored = repository.notes.getValue(existing.id)
+        assertEquals(NoteColor.PEACH, stored.color)
+        assertEquals(listOf(copyOf(URI_B)), stored.images.map { it.path })
+    }
+
     private class InMemoryNoteRepository : NoteRepository {
         val notes = linkedMapOf<Long, Note>()
         var failure: NoteError? = null
         var addImagesFailure: NoteError? = null
         var removeImageFailure: NoteError? = null
+        var saveCount = 0
+            private set
         private var nextId = 1L
         private var nextImageId = 100L
 
@@ -898,6 +1098,7 @@ class NoteEditorViewModelTest {
             notes[id]?.let { AppResult.Success(it) } ?: AppResult.Error(NoteError.NotFound)
 
         override suspend fun saveNote(note: Note): AppResult<Long, NoteError> {
+            saveCount++
             failure?.let { return AppResult.Error(it) }
             val id = if (note.id == Note.NEW_ID) nextId++ else note.id
             // Como la implementación real, guardar la nota no toca sus imágenes.

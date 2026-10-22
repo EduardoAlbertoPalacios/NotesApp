@@ -50,4 +50,8 @@ data class NotesTypography(
     val categoryTitle: TextStyle = SemiBold.copy(fontSize = 14.sp),
     val categoryDescription: TextStyle = Regular.copy(fontSize = 13.sp, lineHeight = 1.4.em),
     val tag: TextStyle = SemiBold.copy(fontSize = 12.sp),
+    val sheetTitle: TextStyle = SemiBold.copy(fontSize = 22.sp),
+    val colorLabel: TextStyle = Regular.copy(fontSize = 11.sp),
+    val colorLabelSelected: TextStyle = SemiBold.copy(fontSize = 11.sp),
+    val colorPreviewTitle: TextStyle = SemiBold.copy(fontSize = 16.sp),
 )

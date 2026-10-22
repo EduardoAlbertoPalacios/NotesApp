@@ -320,6 +320,16 @@ class NoteListScreenTest {
         assertEquals(CONTENT_MAX_LINES, layout.lineCount)
     }
 
+    @Test
+    fun given_note_without_color_when_displayed_then_card_shows_title_and_content() {
+        val uncolored = note.copy(color = NoteColor.NONE)
+        setContent(NoteListUiState(isLoading = false, notes = listOf(uncolored)))
+
+        composeRule.onNodeWithTag(NoteListTestTags.NOTE_CARD + uncolored.id).assertIsDisplayed()
+        composeRule.onNodeWithText(uncolored.title).assertIsDisplayed()
+        composeRule.onNodeWithText(uncolored.content.text).assertIsDisplayed()
+    }
+
     private fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()
         fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)

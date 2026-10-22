@@ -73,6 +73,8 @@ import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.asText
 import com.example.notesapp.presentation.notes.common.buildFormattedContent
 import com.example.notesapp.presentation.notes.common.toContainerColor
+import com.example.notesapp.presentation.notes.common.toContentColor
+import com.example.notesapp.presentation.notes.common.toMetadataColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
 import java.io.File
@@ -398,7 +400,6 @@ private fun NoteCard(
     modifier: Modifier = Modifier,
 ) {
     val spacing = NotesTheme.spacing
-    val noteColors = NotesTheme.noteColors
     Surface(
         onClick = onClick,
         modifier = modifier
@@ -406,7 +407,7 @@ private fun NoteCard(
             .testTag(NoteListTestTags.NOTE_CARD + note.id),
         shape = RoundedCornerShape(NotesTheme.radii.card),
         color = note.color.toContainerColor(),
-        contentColor = noteColors.content,
+        contentColor = note.color.toContentColor(),
     ) {
         Column {
             if (note.imagePath != null) {
@@ -448,7 +449,7 @@ private fun NoteCard(
                     text = note.date.asText(),
                     modifier = Modifier.padding(top = spacing.xxs),
                     style = MaterialTheme.typography.labelSmall,
-                    color = noteColors.metadata,
+                    color = note.color.toMetadataColor(),
                 )
             }
         }
@@ -557,7 +558,7 @@ private val previewNotes = listOf(
             "Un café, una libreta y tiempo para crear.",
             listOf(FormatSpan(13, 20, TextFormat.BOLD), FormatSpan(23, 29, TextFormat.UNDERLINE)),
         ),
-        color = NoteColor.SAND,
+        color = NoteColor.VANILLA,
         isPinned = false,
         date = NoteDateLabel.Yesterday,
     ),
@@ -584,6 +585,22 @@ private val previewNotes = listOf(
         color = NoteColor.PEACH,
         isPinned = false,
         date = NoteDateLabel.Date("3 oct"),
+    ),
+    NoteItemUi(
+        id = 7,
+        title = "Sin prisa",
+        content = AnnotatedString("Una nota sin color para lo que no necesita destacar."),
+        color = NoteColor.NONE,
+        isPinned = false,
+        date = NoteDateLabel.Date("2 oct"),
+    ),
+    NoteItemUi(
+        id = 8,
+        title = "Recetas",
+        content = AnnotatedString("Pan de masa madre y tarta de manzana."),
+        color = NoteColor.SAND,
+        isPinned = false,
+        date = NoteDateLabel.Date("1 oct"),
     ),
 )
 

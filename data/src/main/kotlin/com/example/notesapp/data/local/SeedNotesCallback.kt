@@ -50,7 +50,7 @@ internal class SeedNotesCallback(
                 title = "Ideas sueltas",
                 category = NoteCategory.PERSONAL,
                 content = "Un café, una libreta y tiempo para crear.",
-                color = NoteColor.SAND,
+                color = NoteColor.VANILLA,
                 updatedAt = now - TimeUnit.DAYS.toMillis(1),
             ),
             seed(

@@ -26,13 +26,18 @@ data class NoteEditorUiState(
     val isPinned: Boolean = false,
     val category: NoteCategory? = null,
     val color: NoteColor = NoteColor.AQUA,
+    /** Opción elegida en el selector de color, aún sin aplicar; nula con el selector cerrado. */
+    val pickerColor: NoteColor? = null,
     val images: List<NoteImage> = emptyList(),
     /** Fecha de la última edición; nula mientras la nota no se ha guardado. */
     val date: NoteDateLabel? = null,
     val saveStatus: SaveStatus = SaveStatus.Idle,
     val loadError: LoadError? = null,
     val isDeleteDialogVisible: Boolean = false,
-)
+) {
+    /** La nota ya cargó sin error: solo entonces se pinta su color y se muestran sus acciones. */
+    val isNoteVisible: Boolean get() = !isLoading && loadError == null
+}
 
 enum class SaveStatus { Idle, Saving, Saved }
 

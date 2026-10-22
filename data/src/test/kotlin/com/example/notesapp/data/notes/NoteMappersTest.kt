@@ -44,6 +44,24 @@ class NoteMappersTest {
     }
 
     @Test
+    fun `given every color when mapping note to entity and back then keeps it`() {
+        NoteColor.entries.forEach { color ->
+            val colored = note.copy(color = color)
+
+            assertEquals(colored, colored.toEntity().toDomain())
+        }
+    }
+
+    @Test
+    fun `given every color when mapping entity to domain and back then keeps its name`() {
+        NoteColor.entries.forEach { color ->
+            val colored = entity.copy(color = color.name)
+
+            assertEquals(colored, colored.toDomain().toEntity())
+        }
+    }
+
+    @Test
     fun `given unknown color when mapping to domain then falls back to aqua`() {
         assertEquals(NoteColor.AQUA, entity.copy(color = "MAGENTA").toDomain().color)
     }
