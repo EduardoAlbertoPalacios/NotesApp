@@ -10,7 +10,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
 - Constitución del proyecto en `docs/constitution.md`; specs en `docs/specs/NNN-nombre/spec.md`.
 - **Búsqueda** (spec 001, PR #2), **formato de texto** (spec 002, PR #3) y **color de la nota** (spec 003, PR #4), en `main`.
-- **Lista de tareas** (spec 004, rama `feat/checklist`, Figma `4:1683`): implementada y verificada en emulador; falta el commit.
+- **Lista de tareas** (spec 004, rama `feat/checklist`, Figma `4:1683`): implementada, verificada en emulador y con PR hacia `main`.
 - Pendiente en Figma: Ajustes (`4:1794`).
 
 ## Decisiones (y por qué)
@@ -47,7 +47,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Próximos pasos
 - Corregir el error de lint preexistente del editor.
-- Commit y PR de la spec 004 (lista de tareas).
+- Merge del PR de la spec 004 (lista de tareas).
 - Limitación conocida: con el contenido vacío, al crear la primera tarea el cursor queda bajo la casilla hasta escribir.
 - Pantalla de Ajustes (`4:1794`).
 - Prueba de flujo completo con `HiltTestRunner` + `@TestInstallIn` (aún no existe).
