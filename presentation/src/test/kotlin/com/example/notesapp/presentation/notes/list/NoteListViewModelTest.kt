@@ -7,6 +7,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.GetNotesUseCase
 import com.example.notesapp.domain.notes.Note
@@ -17,6 +18,8 @@ import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.MainDispatcherRule
+import com.example.notesapp.presentation.notes.common.CARD_TASK_DONE
+import com.example.notesapp.presentation.notes.common.CARD_TASK_PENDING
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
 import java.util.Locale
 import java.util.TimeZone
@@ -502,6 +505,25 @@ class NoteListViewModelTest {
         assertFalse(match.content.spanStyles.isEmpty())
     }
 
+    @Test
+    fun `given note with tasks when loaded then content has a checkbox at each task and done is struck through`() = runTest {
+        val viewModel = createViewModel()
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true))
+
+        notes.emit(AppResult.Success(listOf(note(id = 1, content = "Tomates\nPan\nNota", contentTasks = tasks))))
+
+        val content = viewModel.state.value.notes.single().content
+        assertEquals("Tomates\nPan\nNota", content.text.replace("\u200B", ""))
+        assertEquals(
+            listOf(CARD_TASK_PENDING to 0, CARD_TASK_DONE to 9),
+            content.getStringAnnotations(0, content.length).map { it.item to it.start },
+        )
+        assertEquals(
+            listOf(AnnotatedString.Range(SpanStyle(textDecoration = TextDecoration.LineThrough), 10, 13)),
+            content.spanStyles,
+        )
+    }
+
     private val searchNotes
         get() = listOf(
             note(id = 1, title = "Reunión de equipo", updatedAt = now - 1 * DAY, category = NoteCategory.WORK),
@@ -526,6 +548,7 @@ class NoteListViewModelTest {
         images: List<NoteImage> = emptyList(),
         contentSpans: List<FormatSpan> = emptyList(),
         color: NoteColor = NoteColor.MINT,
+        contentTasks: List<ChecklistItem> = emptyList(),
     ) = Note(
         id = id,
         title = title,
@@ -536,6 +559,7 @@ class NoteListViewModelTest {
         updatedAt = updatedAt,
         images = images,
         contentSpans = contentSpans,
+        contentTasks = contentTasks,
     )
 
     private companion object {

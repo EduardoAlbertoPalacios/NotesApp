@@ -7,6 +7,7 @@ import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.common.time.TimeProvider
 import com.example.notesapp.domain.notes.AddNoteImagesUseCase
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.GetNoteUseCase
@@ -1081,6 +1082,273 @@ class NoteEditorViewModelTest {
         assertEquals(NoteColor.PEACH, stored.color)
         assertEquals(listOf(copyOf(URI_B)), stored.images.map { it.path })
     }
+
+    @Test
+    fun `given cursor on a line when checklist clicked then makes it a pending task and autosaves with a new date`() =
+        runTest {
+            val old = existing.copy(content = "Leche\nPan", updatedAt = NOW - TEN_DAYS_MS)
+            repository.notes[old.id] = old
+            val viewModel = createViewModel(old.id)
+            advanceUntilIdle()
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(old.content, TextRange(7))))
+
+            viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+            advanceTimeBy(NoteEditorViewModel.AUTOSAVE_DELAY_MS - 1)
+            runCurrent()
+
+            assertEquals(listOf(task(1)), viewModel.state.value.contentTasks)
+            assertEquals(old, repository.notes[old.id])
+
+            advanceUntilIdle()
+
+            val stored = repository.notes.getValue(old.id)
+            assertEquals(listOf(task(1)), stored.contentTasks)
+            assertEquals(NOW, stored.updatedAt)
+            assertEquals(dateFormatter.format(NOW), viewModel.state.value.date)
+            assertEquals(SaveStatus.Saved, viewModel.state.value.saveStatus)
+        }
+
+    @Test
+    fun `given cursor on a task when checklist clicked then returns it to text and saves`() = runTest {
+        val withTask = existing.copy(content = "Leche\nPan", contentTasks = listOf(task(1)))
+        repository.notes[withTask.id] = withTask
+        val viewModel = createViewModel(withTask.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(withTask.content, TextRange(7))))
+
+        viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.contentTasks.isEmpty())
+        assertTrue(repository.notes.getValue(withTask.id).contentTasks.isEmpty())
+    }
+
+    @Test
+    fun `given selection over mixed lines when checklist clicked then all become tasks keeping existing ones`() =
+        runTest {
+            val mixed = existing.copy(content = "a\nb\nc", contentTasks = listOf(task(1, isDone = true)))
+            repository.notes[mixed.id] = mixed
+            val viewModel = createViewModel(mixed.id)
+            advanceUntilIdle()
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(mixed.content, TextRange(0, 5))))
+
+            viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+            advanceUntilIdle()
+
+            val expected = listOf(task(0), task(1, isDone = true), task(2))
+            assertEquals(expected, viewModel.state.value.contentTasks)
+            assertEquals(expected, repository.notes.getValue(mixed.id).contentTasks)
+        }
+
+    @Test
+    fun `given selection over lines that are all tasks when checklist clicked then all return to text`() = runTest {
+        val allTasks = existing.copy(
+            content = "a\nb\nc",
+            contentTasks = listOf(task(0), task(1, isDone = true), task(2)),
+        )
+        repository.notes[allTasks.id] = allTasks
+        val viewModel = createViewModel(allTasks.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(allTasks.content, TextRange(0, 5))))
+
+        viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.contentTasks.isEmpty())
+        assertTrue(repository.notes.getValue(allTasks.id).contentTasks.isEmpty())
+    }
+
+    @Test
+    fun `given pending task when toggled then marks it done and saves immediately keeping spans`() = runTest {
+        val spans = listOf(FormatSpan(0, 5, TextFormat.BOLD))
+        val old = existing.copy(
+            content = "Leche\nPan",
+            contentSpans = spans,
+            contentTasks = listOf(task(0), task(1)),
+            updatedAt = NOW - TEN_DAYS_MS,
+        )
+        repository.notes[old.id] = old
+        val viewModel = createViewModel(old.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.TaskToggled(line = 1))
+        runCurrent()
+
+        val expected = listOf(task(0), task(1, isDone = true))
+        val state = viewModel.state.value
+        assertEquals(expected, state.contentTasks)
+        assertEquals(spans, state.contentSpans)
+        val stored = repository.notes.getValue(old.id)
+        assertEquals(expected, stored.contentTasks)
+        assertEquals(spans, stored.contentSpans)
+        assertEquals(NOW, stored.updatedAt)
+        assertEquals(1, repository.saveCount)
+    }
+
+    @Test
+    fun `given done task when toggled then marks it pending and saves immediately`() = runTest {
+        val done = existing.copy(content = "Leche\nPan", contentTasks = listOf(task(0, isDone = true)))
+        repository.notes[done.id] = done
+        val viewModel = createViewModel(done.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.TaskToggled(line = 0))
+        runCurrent()
+
+        assertEquals(listOf(task(0)), viewModel.state.value.contentTasks)
+        assertEquals(listOf(task(0)), repository.notes.getValue(done.id).contentTasks)
+    }
+
+    @Test
+    fun `given line that is not a task when toggled then nothing changes and nothing is saved`() = runTest {
+        val withTask = existing.copy(content = "Leche\nPan", contentTasks = listOf(task(0)))
+        repository.notes[withTask.id] = withTask
+        val viewModel = createViewModel(withTask.id)
+        advanceUntilIdle()
+        val before = viewModel.state.value
+
+        viewModel.onIntent(NoteEditorIntent.TaskToggled(line = 1))
+        advanceUntilIdle()
+
+        assertEquals(before, viewModel.state.value)
+        assertEquals(0, repository.saveCount)
+        assertEquals(withTask, repository.notes[withTask.id])
+    }
+
+    @Test
+    fun `given empty task when enter typed then cancels the line break and turns it into text`() = runTest {
+        val spans = listOf(FormatSpan(0, 1, TextFormat.BOLD))
+        val emptyTask = existing.copy(content = "A\n", contentSpans = spans, contentTasks = listOf(task(1)))
+        repository.notes[emptyTask.id] = emptyTask
+        val viewModel = createViewModel(emptyTask.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("A\n", TextRange(2))))
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("A\n\n", TextRange(3))))
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(TextFieldValue("A\n", TextRange(2)), state.content)
+        assertTrue(state.contentTasks.isEmpty())
+        assertEquals(spans, state.contentSpans)
+        val stored = repository.notes.getValue(emptyTask.id)
+        assertEquals("A\n", stored.content)
+        assertTrue(stored.contentTasks.isEmpty())
+    }
+
+    @Test
+    fun `given cursor at start of a task when backspace pressed then cancels the deletion and turns it into text`() =
+        runTest {
+            val spans = listOf(FormatSpan(2, 3, TextFormat.BOLD))
+            val withTask = existing.copy(content = "a\nb", contentSpans = spans, contentTasks = listOf(task(1)))
+            repository.notes[withTask.id] = withTask
+            val viewModel = createViewModel(withTask.id)
+            advanceUntilIdle()
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("a\nb", TextRange(2))))
+
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("ab", TextRange(1))))
+            advanceUntilIdle()
+
+            val state = viewModel.state.value
+            assertEquals(TextFieldValue("a\nb", TextRange(2)), state.content)
+            assertTrue(state.contentTasks.isEmpty())
+            assertEquals(spans, state.contentSpans)
+            val stored = repository.notes.getValue(withTask.id)
+            assertEquals("a\nb", stored.content)
+            assertEquals(spans, stored.contentSpans)
+            assertTrue(stored.contentTasks.isEmpty())
+        }
+
+    @Test
+    fun `given task with text when enter typed at its end then next line is a pending task`() = runTest {
+        val withTask = existing.copy(content = "Leche", contentTasks = listOf(task(0, isDone = true)))
+        repository.notes[withTask.id] = withTask
+        val viewModel = createViewModel(withTask.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Leche", TextRange(5))))
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Leche\n", TextRange(6))))
+        advanceUntilIdle()
+
+        val expected = listOf(task(0, isDone = true), task(1))
+        assertEquals(TextFieldValue("Leche\n", TextRange(6)), viewModel.state.value.content)
+        assertEquals(expected, viewModel.state.value.contentTasks)
+        assertEquals(expected, repository.notes.getValue(withTask.id).contentTasks)
+    }
+
+    @Test
+    fun `given task when several lines pasted into it then the following lines are pending tasks`() = runTest {
+        val withTask = existing.copy(content = "Leche", contentTasks = listOf(task(0)))
+        repository.notes[withTask.id] = withTask
+        val viewModel = createViewModel(withTask.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Leche", TextRange(5))))
+
+        val pasted = "Leche\nPan\nHuevos"
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(pasted, TextRange(pasted.length))))
+        advanceUntilIdle()
+
+        val expected = listOf(task(0), task(1), task(2))
+        assertEquals(pasted, viewModel.state.value.content.text)
+        assertEquals(expected, viewModel.state.value.contentTasks)
+        val stored = repository.notes.getValue(withTask.id)
+        assertEquals(pasted, stored.content)
+        assertEquals(expected, stored.contentTasks)
+    }
+
+    @Test
+    fun `given note with tasks when loaded then exposes its tasks`() = runTest {
+        val tasks = listOf(task(0, isDone = true), task(2))
+        repository.notes[existing.id] = existing.copy(content = "Leche\nPan\nHuevos", contentTasks = tasks)
+
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertEquals(tasks, viewModel.state.value.contentTasks)
+    }
+
+    @Test
+    fun `given unsaved tasks when images picked then saves the tasks with the images`() = runTest {
+        val plain = existing.copy(content = "Leche\nPan")
+        repository.notes[plain.id] = plain
+        val viewModel = createViewModel(plain.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(plain.content, TextRange(0))))
+        viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        runCurrent()
+
+        val stored = repository.notes.getValue(plain.id)
+        assertEquals(listOf(task(0)), stored.contentTasks)
+        assertEquals(listOf(copyOf(URI_A)), stored.images.map { it.path })
+
+        advanceUntilIdle()
+
+        assertEquals(1, repository.saveCount)
+        assertEquals(listOf(task(0)), viewModel.state.value.contentTasks)
+    }
+
+    @Test
+    fun `given note with tasks when only the cursor moves then tasks do not change and nothing is saved`() = runTest {
+        val tasks = listOf(task(1, isDone = true))
+        val withTask = existing.copy(content = "Leche\nPan", contentTasks = tasks)
+        repository.notes[withTask.id] = withTask
+        val viewModel = createViewModel(withTask.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(withTask.content, TextRange(2))))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(withTask.content, TextRange(6, 9))))
+        advanceUntilIdle()
+
+        assertEquals(tasks, viewModel.state.value.contentTasks)
+        assertEquals(TextRange(6, 9), viewModel.state.value.content.selection)
+        assertEquals(0, repository.saveCount)
+        assertEquals(SaveStatus.Idle, viewModel.state.value.saveStatus)
+        assertEquals(withTask, repository.notes[withTask.id])
+    }
+
+    private fun task(line: Int, isDone: Boolean = false) = ChecklistItem(line, isDone)
 
     private class InMemoryNoteRepository : NoteRepository {
         val notes = linkedMapOf<Long, Note>()

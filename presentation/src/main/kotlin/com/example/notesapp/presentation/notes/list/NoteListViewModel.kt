@@ -7,7 +7,7 @@ import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.GetNotesUseCase
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
-import com.example.notesapp.presentation.notes.common.buildFormattedContent
+import com.example.notesapp.presentation.notes.common.buildCardContent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -98,7 +98,7 @@ class NoteListViewModel @Inject constructor(
     private fun Note.toUi() = NoteItemUi(
         id = id,
         title = title,
-        content = buildFormattedContent(content, contentSpans),
+        content = buildCardContent(content, contentSpans, contentTasks),
         color = color,
         isPinned = isPinned,
         date = dateFormatter.format(updatedAt),

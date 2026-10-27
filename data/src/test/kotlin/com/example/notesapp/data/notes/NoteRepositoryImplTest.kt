@@ -6,6 +6,7 @@ import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.data.local.NoteEntity
 import com.example.notesapp.data.local.NoteImageEntity
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
@@ -243,6 +244,37 @@ class NoteRepositoryImplTest {
         dao.insertAll(listOf(entity))
 
         assertEquals(emptyList<FormatSpan>(), (repository.getNote(1) as AppResult.Success).data.contentSpans)
+    }
+
+    @Test
+    fun `given new note with tasks when saving and reading it then keeps the tasks`() = runTest {
+        val tasks = listOf(ChecklistItem(0, isDone = false), ChecklistItem(2, isDone = true))
+        val result = repository.saveNote(note(id = Note.NEW_ID, title = "Compra").copy(content = "Tomates\nLeche\nPan", contentTasks = tasks))
+        val id = (result as AppResult.Success).data
+
+        assertEquals("0,0;2,1", dao.stored.single().contentTasks)
+        assertEquals(tasks, (repository.getNote(id) as AppResult.Success).data.contentTasks)
+        repository.observeNotes().test {
+            assertEquals(tasks, (awaitItem() as AppResult.Success).data.single().contentTasks)
+        }
+    }
+
+    @Test
+    fun `given existing note when changing tasks then updates stored tasks`() = runTest {
+        dao.insertAll(listOf(entity.copy(content = "Tomates\nLeche", contentTasks = "0,0")))
+        val tasks = listOf(ChecklistItem(0, isDone = true), ChecklistItem(1, isDone = false))
+
+        repository.saveNote((repository.getNote(1) as AppResult.Success).data.copy(contentTasks = tasks))
+
+        assertEquals("0,1;1,0", dao.stored.single().contentTasks)
+        assertEquals(tasks, (repository.getNote(1) as AppResult.Success).data.contentTasks)
+    }
+
+    @Test
+    fun `given stored note without tasks when reading then tasks are empty`() = runTest {
+        dao.insertAll(listOf(entity))
+
+        assertEquals(emptyList<ChecklistItem>(), (repository.getNote(1) as AppResult.Success).data.contentTasks)
     }
 
     private suspend fun ReceiveTurbine<AppResult<List<Note>, NoteError>>.awaitImages() =

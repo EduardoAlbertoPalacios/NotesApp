@@ -21,17 +21,20 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
+import com.example.notesapp.presentation.notes.common.buildCardContent
 import com.example.notesapp.presentation.notes.common.buildFormattedContent
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import org.junit.Assert.assertEquals
@@ -329,6 +332,45 @@ class NoteListScreenTest {
         composeRule.onNodeWithText(uncolored.title).assertIsDisplayed()
         composeRule.onNodeWithText(uncolored.content.text).assertIsDisplayed()
     }
+
+    @Test
+    fun given_note_with_tasks_when_displayed_then_card_shows_task_text() {
+        setContent(NoteListUiState(isLoading = false, notes = listOf(checklistNote)))
+
+        composeRule.onNodeWithTag(NoteListTestTags.NOTE_CARD + checklistNote.id).assertIsDisplayed()
+        composeRule.onNodeWithText("Tomates", substring = true, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Pan", substring = true, useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun given_note_with_done_and_pending_tasks_when_displayed_then_checkboxes_announce_their_state() {
+        setContent(NoteListUiState(isLoading = false, notes = listOf(checklistNote)))
+
+        composeRule.onNodeWithContentDescription(string(R.string.note_editor_task_done), useUnmergedTree = true)
+            .assertExists()
+        composeRule.onNodeWithContentDescription(string(R.string.note_editor_task_pending), useUnmergedTree = true)
+            .assertExists()
+    }
+
+    @Test
+    fun given_note_with_tasks_when_card_clicked_then_sends_note_clicked() {
+        setContent(NoteListUiState(isLoading = false, notes = listOf(checklistNote)))
+
+        composeRule.onNodeWithTag(NoteListTestTags.NOTE_CARD + checklistNote.id).performClick()
+
+        assertEquals(listOf<NoteListIntent>(NoteListIntent.NoteClicked(checklistNote.id)), intents)
+    }
+
+    private val checklistNote
+        get() = note.copy(
+            id = 7,
+            title = "Compra",
+            content = buildCardContent(
+                "Tomates\nPan",
+                emptyList(),
+                listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true)),
+            ),
+        )
 
     private fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()

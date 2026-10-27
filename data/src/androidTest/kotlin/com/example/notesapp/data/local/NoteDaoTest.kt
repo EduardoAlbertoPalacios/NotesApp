@@ -204,6 +204,28 @@ class NoteDaoTest {
     }
 
     @Test
+    fun given_note_with_tasks_when_inserted_then_reads_it_unchanged() = runTest {
+        val note = noteEntity().copy(content = "Tomates\nLeche\nPan\nCafé", contentTasks = "0,0;1,0;2,1;3,0")
+
+        val id = dao.insert(note)
+
+        assertEquals(note.copy(id = id), dao.getById(id)?.note)
+        dao.observeAll().test {
+            assertEquals(note.copy(id = id), awaitItem().single().note)
+        }
+    }
+
+    @Test
+    fun given_note_with_tasks_when_tasks_updated_then_persists_change() = runTest {
+        val note = noteEntity().copy(content = "Tomates\nLeche", contentTasks = "0,0")
+        val id = dao.insert(note)
+
+        dao.update(note.copy(id = id, contentTasks = "0,1;1,0"))
+
+        assertEquals("0,1;1,0", dao.getById(id)?.note?.contentTasks)
+    }
+
+    @Test
     fun given_note_without_color_when_inserted_then_reads_it_unchanged() = runTest {
         val note = noteEntity().copy(color = "NONE")
 

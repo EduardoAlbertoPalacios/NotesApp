@@ -45,6 +45,16 @@ data class Sizes(
     val colorSwatchSelectedBorder: Dp = 2.dp,
     val colorSwatchIcon: Dp = 20.dp,
     val colorCheckIcon: Dp = 22.dp,
+    val taskCheckbox: Dp = 20.dp,
+    val taskCheckboxBorder: Dp = 1.5.dp,
+    val taskCheckIcon: Dp = 14.dp,
+    /** Separación entre la casilla de una tarea y su texto. */
+    val taskGap: Dp = 12.dp,
+    /** Alto de cada fila de tarea: la casilla y la separación con la siguiente, como en el diseño. */
+    val taskRow: Dp = 36.dp,
+    /** Casilla de tarea en la tarjeta de Mis notas, más pequeña que la del editor. */
+    val cardTaskCheckbox: Dp = 13.dp,
+    val cardTaskGap: Dp = 6.dp,
 )
 
 @Immutable
@@ -55,4 +65,6 @@ data class Radii(
     val pill: Dp = 28.dp,
     val toolbar: Dp = 24.dp,
     val sheetHandle: Dp = 2.dp,
+    val taskCheckbox: Dp = 5.dp,
+    val cardTaskCheckbox: Dp = 3.dp,
 )

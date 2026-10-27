@@ -7,6 +7,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -30,7 +34,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.notesapp.domain.notes.ChecklistItem
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteImage
@@ -510,6 +516,86 @@ class NoteEditorScreenTest {
             .assertHasClickAction()
     }
 
+    @Test
+    fun given_content_focused_when_checklist_button_clicked_then_sends_checklist_button_clicked() {
+        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = true))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_CHECKLIST)
+            .assertContentDescriptionEquals(string(R.string.note_editor_toolbar_checklist))
+            .assertIsEnabled()
+            .performClick()
+
+        assertEquals(listOf<NoteEditorIntent>(NoteEditorIntent.ChecklistButtonClicked), userIntents)
+    }
+
+    @Test
+    fun given_content_not_focused_when_checklist_button_clicked_then_is_disabled_and_sends_nothing() {
+        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = false))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_CHECKLIST).assertIsNotEnabled().performClick()
+
+        assertTrue(userIntents.isEmpty())
+    }
+
+    @Test
+    fun given_tasks_when_displayed_then_each_task_has_a_checkbox_with_its_label_and_state() {
+        setContent(checklistState)
+
+        taskCheckbox(0)
+            .assert(hasRole(Role.Checkbox))
+            .assertContentDescriptionEquals("Tomates")
+            .assert(hasStateDescription(string(R.string.note_editor_task_pending)))
+            .assertIsOff()
+        taskCheckbox(1)
+            .assert(hasRole(Role.Checkbox))
+            .assertContentDescriptionEquals("Pan")
+            .assert(hasStateDescription(string(R.string.note_editor_task_done)))
+            .assertIsOn()
+    }
+
+    @Test
+    fun given_empty_task_when_displayed_then_checkbox_is_labelled_as_empty_task() {
+        setContent(
+            NoteEditorUiState(
+                title = "Compra",
+                content = TextFieldValue("Tomates\n"),
+                contentTasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = false)),
+            ),
+        )
+
+        taskCheckbox(1).assertContentDescriptionEquals(string(R.string.note_editor_task_empty))
+    }
+
+    @Test
+    fun given_tasks_when_checkboxes_clicked_then_sends_task_toggled_for_each_line() {
+        setContent(checklistState)
+
+        taskCheckbox(1).performClick()
+        taskCheckbox(0).performClick()
+
+        assertEquals(
+            listOf(NoteEditorIntent.TaskToggled(line = 1), NoteEditorIntent.TaskToggled(line = 0)),
+            userIntents,
+        )
+    }
+
+    @Test
+    fun given_tasks_when_displayed_then_each_checkbox_touch_target_is_at_least_44_dp() {
+        setContent(checklistState)
+
+        listOf(0, 1).forEach { line ->
+            taskCheckbox(line).assertWidthIsAtLeast(MIN_TOUCH_TARGET).assertHeightIsAtLeast(MIN_TOUCH_TARGET)
+        }
+    }
+
+    private val checklistState = NoteEditorUiState(
+        title = "Compra",
+        content = TextFieldValue("Tomates\nPan"),
+        contentTasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true)),
+    )
+
+    private fun taskCheckbox(line: Int) = composeRule.onNodeWithTag(NoteEditorTestTags.TASK_CHECKBOX + line)
+
     private fun colorOption(color: NoteColor) = composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_OPTION + color.name)
 
     private val inColorSheet = hasAnyAncestor(hasTestTag(NoteEditorTestTags.COLOR_SHEET))
@@ -541,5 +627,6 @@ class NoteEditorScreenTest {
 
     private companion object {
         const val SHEET_TIMEOUT_MS = 5_000L
+        val MIN_TOUCH_TARGET = 44.dp
     }
 }

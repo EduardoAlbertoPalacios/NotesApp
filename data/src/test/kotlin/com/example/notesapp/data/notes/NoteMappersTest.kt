@@ -3,6 +3,7 @@ package com.example.notesapp.data.notes
 import com.example.notesapp.data.local.NoteEntity
 import com.example.notesapp.data.local.NoteImageEntity
 import com.example.notesapp.data.local.NoteWithImages
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
@@ -152,6 +153,56 @@ class NoteMappersTest {
     @Test
     fun `given entity with spans beyond content when mapping to domain then clips them to content`() {
         assertEquals(listOf(FormatSpan(2, 4, TextFormat.BOLD)), entity.copy(contentSpans = "2,99,B").toDomain().contentSpans)
+    }
+
+    @Test
+    fun `given note with tasks when mapping to entity then encodes them`() {
+        val withTasks = note.copy(
+            content = "Tomates\nLeche\nPan",
+            contentTasks = listOf(ChecklistItem(0, isDone = false), ChecklistItem(2, isDone = true)),
+        )
+
+        assertEquals(entity.copy(content = "Tomates\nLeche\nPan", contentTasks = "0,0;2,1"), withTasks.toEntity())
+    }
+
+    @Test
+    fun `given entity with tasks when mapping to domain then decodes them`() {
+        val withTasks = entity.copy(content = "Tomates\nLeche\nPan", contentTasks = "1,1;2,0")
+
+        assertEquals(
+            note.copy(
+                content = "Tomates\nLeche\nPan",
+                contentTasks = listOf(ChecklistItem(1, isDone = true), ChecklistItem(2, isDone = false)),
+            ),
+            withTasks.toDomain(),
+        )
+    }
+
+    @Test
+    fun `given note with tasks when mapping to entity and back then keeps them`() {
+        val withTasks = note.copy(
+            content = "Tomates\nLeche\nPan\nCafé",
+            contentTasks = listOf(ChecklistItem(0, isDone = false), ChecklistItem(1, isDone = false), ChecklistItem(3, isDone = true)),
+        )
+
+        assertEquals(withTasks, withTasks.toEntity().toDomain())
+    }
+
+    @Test
+    fun `given entity with empty tasks when mapping to domain then tasks are empty`() {
+        assertEquals(emptyList<ChecklistItem>(), entity.copy(contentTasks = "").toDomain().contentTasks)
+    }
+
+    @Test
+    fun `given note without tasks when mapping to entity then tasks are empty string`() {
+        assertEquals("", note.toEntity().contentTasks)
+    }
+
+    @Test
+    fun `given entity with tasks beyond content when mapping to domain then discards them`() {
+        val withTasks = entity.copy(content = "Tomates\nLeche", contentTasks = "0,1;2,0;5,1")
+
+        assertEquals(listOf(ChecklistItem(0, isDone = true)), withTasks.toDomain().contentTasks)
     }
 
     @Test

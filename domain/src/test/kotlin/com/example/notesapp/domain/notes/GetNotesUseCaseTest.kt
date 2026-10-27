@@ -171,6 +171,18 @@ class GetNotesUseCaseTest {
         }
 
     @Test
+    fun `given query matching a task text when searching then finds the note with its tasks`() = runTest {
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true))
+        val shopping = note(id = 1, updatedAt = 10, title = "La compra", content = "Tomates\nCafé", contentTasks = tasks)
+        val other = note(id = 2, updatedAt = 20, title = "Ideas", content = "Viaje")
+        val repository = FakeNoteRepository(AppResult.Success(listOf(shopping, other)))
+
+        filteredOf(repository, query = "cafe").test {
+            assertEquals(AppResult.Success(FilteredNotes(listOf(shopping), totalCount = 2)), awaitItem())
+        }
+    }
+
+    @Test
     fun `given query when invoked then keeps pinned first and newest edit first in results`() = runTest {
         val oldPinned = note(id = 1, isPinned = true, updatedAt = 100, title = "Viaje a Lima")
         val newUnpinned = note(id = 2, isPinned = false, updatedAt = 300, title = "Viaje a Cusco")
@@ -315,6 +327,7 @@ class GetNotesUseCaseTest {
         title: String = "Nota $id",
         content: String = "Contenido",
         contentSpans: List<FormatSpan> = emptyList(),
+        contentTasks: List<ChecklistItem> = emptyList(),
     ) = Note(
         id = id,
         title = title,
@@ -324,5 +337,6 @@ class GetNotesUseCaseTest {
         category = category,
         updatedAt = updatedAt,
         contentSpans = contentSpans,
+        contentTasks = contentTasks,
     )
 }

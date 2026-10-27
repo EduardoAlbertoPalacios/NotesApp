@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.notesapp.data.notes.encode
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import java.util.concurrent.TimeUnit
@@ -27,6 +29,7 @@ internal class SeedNotesCallback(
         put("is_pinned", isPinned)
         put("updated_at", updatedAt)
         put("category", category)
+        put("content_tasks", contentTasks)
     }
 
     companion object {
@@ -42,8 +45,14 @@ internal class SeedNotesCallback(
             seed(
                 title = "La compra",
                 category = NoteCategory.PERSONAL,
-                content = "☐  Tomates\n☐  Leche de avena\n☑  Pan integral\n☐  Café",
+                content = "Tomates\nLeche de avena\nPan integral\nCafé",
                 color = NoteColor.ROSE,
+                tasks = listOf(
+                    ChecklistItem(line = 0, isDone = false),
+                    ChecklistItem(line = 1, isDone = false),
+                    ChecklistItem(line = 2, isDone = true),
+                    ChecklistItem(line = 3, isDone = false),
+                ),
                 updatedAt = now - TimeUnit.MINUTES.toMillis(85),
             ),
             seed(
@@ -82,6 +91,7 @@ internal class SeedNotesCallback(
             updatedAt: Long,
             isPinned: Boolean = false,
             category: NoteCategory? = null,
+            tasks: List<ChecklistItem> = emptyList(),
         ) = NoteEntity(
             title = title,
             content = content,
@@ -89,6 +99,7 @@ internal class SeedNotesCallback(
             isPinned = isPinned,
             updatedAt = updatedAt,
             category = category?.name,
+            contentTasks = tasks.encode(),
         )
     }
 }

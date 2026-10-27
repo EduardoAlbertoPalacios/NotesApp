@@ -16,4 +16,6 @@ internal data class NoteEntity(
     val category: String? = null,
     /** Tramos de formato del contenido, codificados como texto; vacío = sin formato. Desde la versión 4. */
     @ColumnInfo(name = "content_spans", defaultValue = "") val contentSpans: String = "",
+    /** Líneas del contenido que son tareas, codificadas como texto; vacío = sin tareas. Desde la versión 6. */
+    @ColumnInfo(name = "content_tasks", defaultValue = "") val contentTasks: String = "",
 )

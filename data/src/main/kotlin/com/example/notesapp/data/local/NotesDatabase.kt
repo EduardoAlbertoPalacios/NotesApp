@@ -6,7 +6,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [NoteEntity::class, NoteImageEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
     autoMigrations = [
         // v2: columna `category`, nula para las notas existentes.
@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
         // v4: columna `content_spans`, vacía (sin formato) para las notas existentes.
         AutoMigration(from = 3, to = 4),
     ],
-    // v5 es una migración manual de datos: ver `MIGRATION_4_5`.
+    // v5 y v6 son migraciones manuales (cambian datos): ver `MIGRATION_4_5` y `MIGRATION_5_6`.
 )
 internal abstract class NotesDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao

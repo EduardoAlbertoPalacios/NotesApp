@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -54,6 +55,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -61,6 +63,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -68,7 +71,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import coil3.compose.AsyncImage
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
@@ -79,11 +84,13 @@ import com.example.notesapp.presentation.notes.common.AppColorsTheme
 import com.example.notesapp.presentation.notes.common.FormattedContentTransformation
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.NoteSurfaceTheme
+import com.example.notesapp.presentation.notes.common.TaskTextStyle
 import com.example.notesapp.presentation.notes.common.asText
 import com.example.notesapp.presentation.notes.common.toContainerColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
 import java.io.File
+import kotlin.math.roundToInt
 
 object NoteEditorTestTags {
     const val BACK = "note_editor_back"
@@ -100,6 +107,8 @@ object NoteEditorTestTags {
     const val TOOLBAR_IMAGE = "note_editor_toolbar_image"
     const val TOOLBAR_FORMAT = "note_editor_toolbar_format"
     const val TOOLBAR_COLOR = "note_editor_toolbar_color"
+    const val TOOLBAR_CHECKLIST = "note_editor_toolbar_checklist"
+    const val TASK_CHECKBOX = "note_editor_task_"
     const val FORMAT_MENU = "note_editor_format_menu"
     const val FORMAT_OPTION = "note_editor_format_"
     const val IMAGE = "note_editor_image_"
@@ -287,16 +296,7 @@ private fun NoteContent(
         if (state.images.isNotEmpty()) {
             NoteImages(images = state.images, onIntent = onIntent)
         }
-        EditorTextField(
-            value = state.content,
-            onValueChange = { onIntent(NoteEditorIntent.ContentChanged(it)) },
-            placeholder = stringResource(R.string.note_editor_content_placeholder),
-            textStyle = NotesTheme.typography.editorBody,
-            visualTransformation = FormattedContentTransformation(state.contentSpans),
-            modifier = Modifier
-                .onFocusChanged { onIntent(NoteEditorIntent.ContentFocusChanged(it.isFocused)) }
-                .testTag(NoteEditorTestTags.CONTENT),
-        )
+        ContentField(state = state, onIntent = onIntent)
     }
 }
 
@@ -426,6 +426,65 @@ private fun NoteCategory.descriptionRes(): Int = when (this) {
     NoteCategory.PERSONAL -> R.string.note_category_personal_description
 }
 
+/**
+ * Campo del contenido con sus tareas: el texto deja hueco a la izquierda de cada tarea y las casillas
+ * se dibujan encima, a la altura de la primera línea en pantalla de cada tarea.
+ */
+@Composable
+private fun ContentField(
+    state: NoteEditorUiState,
+    onIntent: (NoteEditorIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val sizes = NotesTheme.sizes
+    val density = LocalDensity.current
+    val taskStyle = TaskTextStyle(
+        indent = with(density) { (sizes.taskCheckbox + sizes.taskGap).toSp() },
+        lineHeight = with(density) { sizes.taskRow.toSp() },
+        doneColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    Box(modifier = modifier.fillMaxWidth()) {
+        EditorTextField(
+            value = state.content,
+            onValueChange = { onIntent(NoteEditorIntent.ContentChanged(it)) },
+            placeholder = stringResource(R.string.note_editor_content_placeholder),
+            textStyle = NotesTheme.typography.editorBody,
+            visualTransformation = FormattedContentTransformation(state.contentSpans, state.contentTasks, taskStyle),
+            // Con una tarea vacía el marcador taparía su casilla.
+            showPlaceholder = state.content.text.isEmpty() && state.contentTasks.isEmpty(),
+            onTextLayout = { layout = it },
+            modifier = Modifier
+                .onFocusChanged { onIntent(NoteEditorIntent.ContentFocusChanged(it.isFocused)) }
+                .testTag(NoteEditorTestTags.CONTENT),
+        )
+        val textLayout = layout ?: return@Box
+        val lines = state.content.text.split('\n')
+        state.contentTasks.forEach { task ->
+            val lineText = lines.getOrNull(task.line) ?: return@forEach
+            val lineStart = lines.take(task.line).sumOf { it.length + 1 }
+            if (lineStart > textLayout.layoutInput.text.length) return@forEach
+            val visualLine = textLayout.getLineForOffset(lineStart)
+            val lineCenter = (textLayout.getLineTop(visualLine) + textLayout.getLineBottom(visualLine)) / 2
+            TaskCheckbox(
+                isDone = task.isDone,
+                label = lineText.ifBlank { stringResource(R.string.note_editor_task_empty) },
+                onToggle = { onIntent(NoteEditorIntent.TaskToggled(task.line)) },
+                modifier = Modifier
+                    .offset {
+                        // Centra la casilla visible (no su zona táctil) al inicio de la línea.
+                        val touchCenter = sizes.iconAction.roundToPx() / 2
+                        IntOffset(
+                            x = sizes.taskCheckbox.roundToPx() / 2 - touchCenter,
+                            y = lineCenter.roundToInt() - touchCenter,
+                        )
+                    }
+                    .testTag(NoteEditorTestTags.TASK_CHECKBOX + task.line),
+            )
+        }
+    }
+}
+
 /** Campo del contenido: trabaja con la selección para poder aplicar formato. */
 @Composable
 private fun EditorTextField(
@@ -435,18 +494,21 @@ private fun EditorTextField(
     textStyle: TextStyle,
     modifier: Modifier = Modifier,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    showPlaceholder: Boolean = value.text.isEmpty(),
+    onTextLayout: (TextLayoutResult) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         visualTransformation = visualTransformation,
+        onTextLayout = onTextLayout,
         modifier = modifier.editorField(placeholder),
         textStyle = textStyle.copy(color = colors.onBackground),
         keyboardOptions = EditorKeyboardOptions,
         cursorBrush = SolidColor(colors.primary),
         decorationBox = { innerTextField ->
-            EditorFieldDecoration(isEmpty = value.text.isEmpty(), placeholder, textStyle, innerTextField)
+            EditorFieldDecoration(isEmpty = showPlaceholder, placeholder, textStyle, innerTextField)
         },
     )
 }
@@ -552,7 +614,7 @@ private fun NoteImageItem(
     }
 }
 
-/** Barra de edición del diseño. Funcionan formato, "Agregar imagen" y color; el resto se muestra deshabilitado. */
+/** Barra de edición del diseño. Funcionan formato, lista de tareas, "Agregar imagen" y color; "Deshacer" se muestra deshabilitado. */
 @Composable
 private fun EditorToolbar(
     state: NoteEditorUiState,
@@ -587,7 +649,17 @@ private fun EditorToolbar(
                 onIntent = onIntent,
             )
         }
-        ToolbarButton(R.drawable.ic_list_todo, R.string.note_editor_toolbar_checklist)
+        // Como el formato, las tareas son del contenido: con el foco en el título, el botón queda deshabilitado.
+        ToolbarButton(
+            iconRes = R.drawable.ic_list_todo,
+            labelRes = R.string.note_editor_toolbar_checklist,
+            onClick = if (state.isContentFocused) {
+                { onIntent(NoteEditorIntent.ChecklistButtonClicked) }
+            } else {
+                null
+            },
+            modifier = Modifier.testTag(NoteEditorTestTags.TOOLBAR_CHECKLIST),
+        )
         ToolbarButton(
             iconRes = R.drawable.ic_image,
             labelRes = R.string.note_editor_toolbar_image,
@@ -837,6 +909,33 @@ private val ColorPreviewState = NoteEditorUiState(
     date = NoteDateLabel.Today("9:38"),
     saveStatus = SaveStatus.Saved,
 )
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteEditorScreenChecklistPreview() {
+    NotesAppTheme {
+        NoteEditorScreen(
+            state = NoteEditorUiState(
+                isNewNote = false,
+                title = "Reunión de equipo",
+                content = TextFieldValue(
+                    "Mis pendientes\nEnviar el resumen al equipo\nPreparar la propuesta visual\n" +
+                        "Revisar los textos de bienvenida antes de compartir el prototipo el viernes",
+                ),
+                contentSpans = listOf(FormatSpan(0, 14, TextFormat.BOLD)),
+                contentTasks = listOf(
+                    ChecklistItem(line = 1, isDone = true),
+                    ChecklistItem(line = 2, isDone = false),
+                    ChecklistItem(line = 3, isDone = false),
+                ),
+                category = NoteCategory.WORK,
+                date = NoteDateLabel.Today("9:38"),
+                saveStatus = SaveStatus.Saved,
+            ),
+            onIntent = {},
+        )
+    }
+}
 
 @Preview(widthDp = 412, heightDp = 892)
 @Composable
