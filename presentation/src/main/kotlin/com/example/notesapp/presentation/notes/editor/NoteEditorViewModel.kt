@@ -1,5 +1,6 @@
 package com.example.notesapp.presentation.notes.editor
 
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -10,6 +11,7 @@ import com.example.notesapp.domain.notes.DeleteNoteUseCase
 import com.example.notesapp.domain.notes.GetNoteUseCase
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
+import com.example.notesapp.domain.notes.NoteChecklist
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteFormatting
@@ -94,6 +96,8 @@ class NoteEditorViewModel @Inject constructor(
             is NoteEditorIntent.CategoryClicked -> saveNow {
                 it.copy(category = intent.category.takeIf { category -> category != it.category })
             }
+            NoteEditorIntent.ChecklistButtonClicked -> toggleChecklist()
+            is NoteEditorIntent.TaskToggled -> toggleTask(intent.line)
             NoteEditorIntent.ColorButtonClicked -> _state.update { it.copy(pickerColor = it.color) }
             is NoteEditorIntent.PickerColorSelected -> _state.update { it.copy(pickerColor = intent.color) }
             NoteEditorIntent.ColorApplied -> applyColor()
@@ -117,6 +121,7 @@ class NoteEditorViewModel @Inject constructor(
                             title = note.title,
                             content = TextFieldValue(note.content),
                             contentSpans = note.contentSpans,
+                            contentTasks = note.contentTasks,
                             isPinned = note.isPinned,
                             category = note.category,
                             color = note.color,
@@ -154,19 +159,44 @@ class NoteEditorViewModel @Inject constructor(
             }
             _state.update { it.copy(content = content, activeFormats = activeFormats) }
         } else {
-            // Lo escrito o pegado toma los formatos activos; el resto de los tramos se desplaza.
             edit {
+                // Primero las tareas: Intro en una tarea vacía o borrar al inicio de una tarea anulan la tecla.
+                val checklist = NoteChecklist.onTextChanged(
+                    old = it.content.text,
+                    new = content.text,
+                    cursor = content.selection.end,
+                    tasks = it.contentTasks,
+                )
+                val newContent = checklist.cursor?.let { cursor -> TextFieldValue(checklist.text, TextRange(cursor)) }
+                    ?: content
+                // Después el formato, con el texto final: lo escrito o pegado toma los formatos activos
+                // y el resto de los tramos se desplaza; una tecla anulada no los mueve.
                 it.copy(
-                    content = content,
+                    content = newContent,
+                    contentTasks = checklist.tasks,
                     contentSpans = NoteFormatting.onTextChanged(
                         spans = it.contentSpans,
                         old = it.content.text,
-                        new = content.text,
+                        new = newContent.text,
                         activeFormats = it.activeFormats,
                     ),
                 )
             }
         }
+    }
+
+    /** Convierte en tareas las líneas del cursor o de la selección, o las devuelve a texto si ya lo eran todas. */
+    private fun toggleChecklist() {
+        edit {
+            val selection = it.content.selection
+            it.copy(contentTasks = NoteChecklist.toggleLines(it.content.text, it.contentTasks, selection.min, selection.max))
+        }
+    }
+
+    /** Marcar o desmarcar es un cambio de un toque: se guarda al momento. */
+    private fun toggleTask(line: Int) {
+        val task = _state.value.contentTasks.firstOrNull { it.line == line } ?: return
+        saveNow { it.copy(contentTasks = NoteChecklist.setDone(it.contentTasks, line, !task.isDone)) }
     }
 
     private fun selectFormat(format: TextFormat) {
@@ -203,7 +233,7 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
-    /** Cambios de un toque (fijar, categoría, color): se guardan al momento, sin esperar al autoguardado. */
+    /** Cambios de un toque (fijar, categoría, color, marcar tarea): se guardan al momento, sin esperar al autoguardado. */
     private fun saveNow(transform: (NoteEditorUiState) -> NoteEditorUiState) {
         _state.update(transform)
         hasPendingChanges = true
@@ -218,6 +248,7 @@ class NoteEditorViewModel @Inject constructor(
             title = current.title,
             content = current.content.text,
             contentSpans = current.contentSpans,
+            contentTasks = current.contentTasks,
             isPinned = current.isPinned,
             category = current.category,
             color = current.color,
@@ -246,7 +277,8 @@ class NoteEditorViewModel @Inject constructor(
     /** Si el estado tiene cambios que la última versión guardada ([note]) todavía no incluye. */
     private fun hasUnsavedChanges(): Boolean = _state.value.run {
         title != note.title || content.text != note.content || isPinned != note.isPinned ||
-            category != note.category || contentSpans != note.contentSpans || color != note.color
+            category != note.category || contentSpans != note.contentSpans || color != note.color ||
+            contentTasks != note.contentTasks
     }
 
     private fun addImages(uris: List<String>) {
@@ -259,6 +291,7 @@ class NoteEditorViewModel @Inject constructor(
                     title = current.title,
                     content = current.content.text,
                     contentSpans = current.contentSpans,
+                    contentTasks = current.contentTasks,
                     isPinned = current.isPinned,
                     category = current.category,
                     color = current.color,

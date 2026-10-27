@@ -13,6 +13,8 @@ data class Note(
     val images: List<NoteImage> = emptyList(),
     /** Formato del contenido; vacío en texto plano y en las notas anteriores al formato. */
     val contentSpans: List<FormatSpan> = emptyList(),
+    /** Líneas del contenido que son tareas; vacía en las notas sin tareas y en las anteriores a ellas. */
+    val contentTasks: List<ChecklistItem> = emptyList(),
 ) {
     val isBlank: Boolean get() = title.isBlank() && content.isBlank() && images.isEmpty()
 

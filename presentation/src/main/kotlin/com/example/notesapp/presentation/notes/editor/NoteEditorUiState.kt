@@ -2,6 +2,7 @@ package com.example.notesapp.presentation.notes.editor
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.input.TextFieldValue
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
@@ -18,6 +19,8 @@ data class NoteEditorUiState(
     /** Contenido con su selección: el formato se aplica sobre lo seleccionado o en la posición del cursor. */
     val content: TextFieldValue = TextFieldValue(),
     val contentSpans: List<FormatSpan> = emptyList(),
+    /** Líneas del contenido que son tareas, con su estado. */
+    val contentTasks: List<ChecklistItem> = emptyList(),
     /** Formatos que tendrá lo próximo que se escriba; no se guardan con la nota. */
     val activeFormats: Set<TextFormat> = emptySet(),
     val isFormatMenuVisible: Boolean = false,

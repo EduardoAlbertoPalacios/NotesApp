@@ -1,6 +1,7 @@
 package com.example.notesapp.presentation.notes.list
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -59,18 +62,24 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import coil3.compose.AsyncImage
+import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.notes.common.CARD_TASK_DONE
+import com.example.notesapp.presentation.notes.common.CARD_TASK_PENDING
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.asText
+import com.example.notesapp.presentation.notes.common.buildCardContent
 import com.example.notesapp.presentation.notes.common.buildFormattedContent
 import com.example.notesapp.presentation.notes.common.toContainerColor
 import com.example.notesapp.presentation.notes.common.toContentColor
@@ -444,6 +453,7 @@ private fun NoteCard(
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = CONTENT_MAX_LINES,
                     overflow = TextOverflow.Ellipsis,
+                    inlineContent = cardTaskInlineContent(note.color),
                 )
                 Text(
                     text = note.date.asText(),
@@ -455,6 +465,70 @@ private fun NoteCard(
         }
     }
 }
+
+/** Casillas de las tareas en la tarjeta, solo para ver: con los colores de la tarjeta según su color. */
+@Composable
+private fun cardTaskInlineContent(color: NoteColor): Map<String, InlineTextContent> {
+    val sizes = NotesTheme.sizes
+    val density = LocalDensity.current
+    val placeholder = with(density) {
+        Placeholder(
+            width = (sizes.cardTaskCheckbox + sizes.cardTaskGap).toSp(),
+            height = sizes.cardTaskCheckbox.toSp(),
+            placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+        )
+    }
+    val content = color.toContentColor()
+    val metadata = color.toMetadataColor()
+    val container = color.toContainerColor()
+    return mapOf(
+        CARD_TASK_PENDING to InlineTextContent(placeholder) { CardTaskCheckbox(isDone = false, content, metadata, container) },
+        CARD_TASK_DONE to InlineTextContent(placeholder) { CardTaskCheckbox(isDone = true, content, metadata, container) },
+    )
+}
+
+@Composable
+private fun CardTaskCheckbox(
+    isDone: Boolean,
+    doneColor: Color,
+    pendingColor: Color,
+    checkColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val sizes = NotesTheme.sizes
+    val shape = RoundedCornerShape(NotesTheme.radii.cardTaskCheckbox)
+    val stateText = stringResource(if (isDone) R.string.note_editor_task_done else R.string.note_editor_task_pending)
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .semantics { contentDescription = stateText },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(sizes.cardTaskCheckbox)
+                .then(
+                    if (isDone) {
+                        Modifier.background(doneColor, shape)
+                    } else {
+                        Modifier.border(sizes.border, pendingColor, shape)
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isDone) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_check),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(CARD_CHECK_ICON_FRACTION),
+                    tint = checkColor,
+                )
+            }
+        }
+    }
+}
+
+private const val CARD_CHECK_ICON_FRACTION = 0.75f
 
 @Composable
 private fun CreateNoteButton(
@@ -546,7 +620,16 @@ private val previewNotes = listOf(
     NoteItemUi(
         id = 2,
         title = "La compra",
-        content = AnnotatedString("☐  Tomates\n☐  Leche de avena\n☑  Pan integral\n☐  Café"),
+        content = buildCardContent(
+            "Tomates\nLeche de avena\nPan integral\nCafé",
+            emptyList(),
+            listOf(
+                ChecklistItem(line = 0, isDone = false),
+                ChecklistItem(line = 1, isDone = false),
+                ChecklistItem(line = 2, isDone = true),
+                ChecklistItem(line = 3, isDone = false),
+            ),
+        ),
         color = NoteColor.ROSE,
         isPinned = false,
         date = NoteDateLabel.Today("8:15"),

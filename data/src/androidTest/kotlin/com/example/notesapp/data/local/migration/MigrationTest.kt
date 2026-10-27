@@ -111,9 +111,10 @@ class MigrationTest {
         val version = database.openHelper.readableDatabase.version
         database.close()
 
-        assertEquals(5, version)
+        assertEquals(6, version)
         assertEquals("Ideas", note?.note?.title)
         assertEquals("", note?.note?.contentSpans)
+        assertEquals("", note?.note?.contentTasks)
         assertEquals(listOf("/a.jpg"), note?.images?.map { it.path })
     }
 
@@ -222,7 +223,51 @@ class MigrationTest {
         db.close()
     }
 
+    @Test
+    fun given_v5_database_with_legacy_markers_when_migrating_to_v6_then_converts_them_to_tasks_and_keeps_the_rest() {
+        val panStart = LEGACY_CONTENT.indexOf("Pan")
+        helper.createDatabase(TEST_DB, 5).apply {
+            execSQL(
+                "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category, content_spans) " +
+                    "VALUES (1, 'Compra', ?, 'VANILLA', 0, 42, 'PERSONAL', ?)",
+                arrayOf<Any>(LEGACY_CONTENT, "$panStart,${panStart + 3},B"),
+            )
+            execSQL(INSERT_V5_PLAIN_NOTE)
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6)
+
+        db.query("SELECT id, content, content_spans, content_tasks, updated_at, title, color FROM notes ORDER BY id").use { cursor ->
+            assertEquals(2, cursor.count)
+            cursor.moveToNext()
+            val content = cursor.getString(1)
+            val (start, end, format) = cursor.getString(2).split(",")
+            assertEquals(1L, cursor.getLong(0))
+            assertEquals("Tomates\nPan integral\nTexto normal ☐ en medio", content)
+            assertEquals("Pan", content.substring(start.toInt(), end.toInt()))
+            assertEquals("B", format)
+            assertEquals("0,0;1,1", cursor.getString(3))
+            assertEquals(42L, cursor.getLong(4))
+            assertEquals("Compra", cursor.getString(5))
+            assertEquals("VANILLA", cursor.getString(6))
+            cursor.moveToNext()
+            assertEquals(2L, cursor.getLong(0))
+            assertEquals("Libreta de ideas", cursor.getString(1))
+            assertEquals("0,7,B", cursor.getString(2))
+            assertEquals("", cursor.getString(3))
+            assertEquals(7L, cursor.getLong(4))
+            assertEquals("Ideas", cursor.getString(5))
+            assertEquals("ROSE", cursor.getString(6))
+        }
+        db.close()
+    }
+
     private companion object {
+        const val LEGACY_CONTENT = "☐  Tomates\n☑  Pan integral\nTexto normal ☐ en medio"
+        const val INSERT_V5_PLAIN_NOTE =
+            "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category, content_spans) " +
+                "VALUES (2, 'Ideas', 'Libreta de ideas', 'ROSE', 1, 7, NULL, '0,7,B')"
         const val TEST_DB = "migration-test.db"
         const val INSERT_V1_NOTE =
             "INSERT INTO notes (id, title, content, color, is_pinned, updated_at) " +

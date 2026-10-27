@@ -18,6 +18,10 @@ sealed interface NoteEditorIntent {
     data class FormatSelected(val format: TextFormat) : NoteEditorIntent
     /** Elegir la categoría ya seleccionada la quita. */
     data class CategoryClicked(val category: NoteCategory) : NoteEditorIntent
+    /** Convierte en tareas las líneas del cursor o de la selección, o las devuelve a texto si ya lo eran. */
+    data object ChecklistButtonClicked : NoteEditorIntent
+    /** Marca o desmarca la tarea de la línea [line] del contenido. */
+    data class TaskToggled(val line: Int) : NoteEditorIntent
     data object ColorButtonClicked : NoteEditorIntent
     /** Elegir una opción en el selector no cambia el color de la nota hasta aplicarla. */
     data class PickerColorSelected(val color: NoteColor) : NoteEditorIntent

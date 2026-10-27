@@ -22,6 +22,7 @@ internal fun NoteEntity.toDomain(images: List<NoteImage> = emptyList()) = Note(
     category = NoteCategory.entries.firstOrNull { it.name == category },
     images = images,
     contentSpans = contentSpans.decodeSpans(content.length),
+    contentTasks = contentTasks.decodeTasks(content),
 )
 
 internal fun Note.toEntity() = NoteEntity(
@@ -33,4 +34,5 @@ internal fun Note.toEntity() = NoteEntity(
     updatedAt = updatedAt,
     category = category?.name,
     contentSpans = contentSpans.encode(),
+    contentTasks = contentTasks.encode(),
 )

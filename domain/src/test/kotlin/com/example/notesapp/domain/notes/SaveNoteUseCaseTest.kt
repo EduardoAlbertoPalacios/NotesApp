@@ -106,6 +106,19 @@ class SaveNoteUseCaseTest {
     }
 
     @Test
+    fun `given note with content tasks when saving then keeps them and updates its edit time`() = runTest {
+        val tasks = listOf(ChecklistItem(line = 0, isDone = true), ChecklistItem(line = 1, isDone = false))
+        val withTasks = note(id = 7, content = "Tomates\nCafé", contentTasks = tasks, updatedAt = 500)
+
+        val result = saveNote(withTasks)
+
+        val expected = withTasks.copy(updatedAt = NOW)
+        assertEquals(listOf(expected), repository.saved)
+        assertEquals(AppResult.Success(expected), result)
+        assertEquals(tasks, repository.saved.single().contentTasks)
+    }
+
+    @Test
     fun `given storage failure when saving then returns the error`() = runTest {
         repository.failure = NoteError.Storage
 
@@ -119,6 +132,7 @@ class SaveNoteUseCaseTest {
         updatedAt: Long = 0,
         contentSpans: List<FormatSpan> = emptyList(),
         color: NoteColor = NoteColor.AQUA,
+        contentTasks: List<ChecklistItem> = emptyList(),
     ) = Note(
         id = id,
         title = title,
@@ -128,6 +142,7 @@ class SaveNoteUseCaseTest {
         category = null,
         updatedAt = updatedAt,
         contentSpans = contentSpans,
+        contentTasks = contentTasks,
     )
 
     private companion object {
