@@ -9,6 +9,7 @@ import com.example.notesapp.common.time.TimeProvider
 import com.example.notesapp.domain.notes.AddNoteImagesUseCase
 import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
+import com.example.notesapp.domain.notes.EditField
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.GetNoteUseCase
 import com.example.notesapp.domain.notes.Note
@@ -19,6 +20,7 @@ import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.domain.notes.RemoveNoteImageUseCase
+import com.example.notesapp.domain.notes.RestoreNoteUseCase
 import com.example.notesapp.domain.notes.SaveNoteUseCase
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.MainDispatcherRule
@@ -72,6 +74,7 @@ class NoteEditorViewModelTest {
         ),
         getNote = GetNoteUseCase(repository),
         saveNote = SaveNoteUseCase(repository, TimeProvider { NOW }),
+        restoreNote = RestoreNoteUseCase(repository),
         deleteNote = DeleteNoteUseCase(repository, imageStorage),
         addNoteImages = AddNoteImagesUseCase(repository, imageStorage, TimeProvider { NOW }),
         removeNoteImage = RemoveNoteImageUseCase(repository, imageStorage),
@@ -96,7 +99,7 @@ class NoteEditorViewModelTest {
 
         val state = viewModel.state.value
         assertEquals(false, state.isLoading)
-        assertEquals(existing.title, state.title)
+        assertEquals(existing.title, state.title.text)
         assertEquals(existing.content, state.content.text)
         assertEquals(dateFormatter.format(existing.updatedAt), state.date)
     }
@@ -113,21 +116,21 @@ class NoteEditorViewModelTest {
     fun `given typing when autosave delay has not elapsed then nothing is saved`() = runTest {
         val viewModel = createViewModel()
 
-        viewModel.onIntent(NoteEditorIntent.TitleChanged("Ide"))
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Ide")))
         advanceTimeBy(NoteEditorViewModel.AUTOSAVE_DELAY_MS - 1)
         runCurrent()
 
         assertTrue(repository.notes.isEmpty())
-        assertEquals("Ide", viewModel.state.value.title)
+        assertEquals("Ide", viewModel.state.value.title.text)
     }
 
     @Test
     fun `given typing stops when autosave delay elapses then creates the note once`() = runTest {
         val viewModel = createViewModel()
 
-        viewModel.onIntent(NoteEditorIntent.TitleChanged("Ide"))
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Ide")))
         advanceTimeBy(200)
-        viewModel.onIntent(NoteEditorIntent.TitleChanged("Ideas"))
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Ideas")))
         viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Libreta")))
         advanceUntilIdle()
 
@@ -160,7 +163,7 @@ class NoteEditorViewModelTest {
         val viewModel = createViewModel()
 
         viewModel.effects.test {
-            viewModel.onIntent(NoteEditorIntent.TitleChanged("   "))
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("   ")))
             viewModel.onIntent(NoteEditorIntent.BackClicked)
             assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
         }
@@ -172,7 +175,7 @@ class NoteEditorViewModelTest {
         val viewModel = createViewModel()
 
         viewModel.effects.test {
-            viewModel.onIntent(NoteEditorIntent.TitleChanged("Para leer"))
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Para leer")))
             viewModel.onIntent(NoteEditorIntent.BackClicked)
             assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
         }
@@ -185,7 +188,7 @@ class NoteEditorViewModelTest {
         repository.failure = NoteError.Storage
 
         viewModel.effects.test {
-            viewModel.onIntent(NoteEditorIntent.TitleChanged("Para leer"))
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Para leer")))
             viewModel.onIntent(NoteEditorIntent.BackClicked)
             assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_save_error), awaitItem())
             expectNoEvents()
@@ -236,7 +239,7 @@ class NoteEditorViewModelTest {
         val viewModel = createViewModel()
 
         viewModel.effects.test {
-            viewModel.onIntent(NoteEditorIntent.TitleChanged("Borrador"))
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Borrador")))
             viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
             assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
         }
@@ -269,7 +272,7 @@ class NoteEditorViewModelTest {
     fun `given category argument when new note is autosaved then stores that category`() = runTest {
         val viewModel = createViewModel(category = NoteCategory.PERSONAL.name)
 
-        viewModel.onIntent(NoteEditorIntent.TitleChanged("La compra"))
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("La compra")))
         advanceUntilIdle()
 
         assertEquals(NoteCategory.PERSONAL, repository.notes.values.single().category)
@@ -431,7 +434,7 @@ class NoteEditorViewModelTest {
     @Test
     fun `given unsaved text when images picked then saves text and images in a single note`() = runTest {
         val viewModel = createViewModel()
-        viewModel.onIntent(NoteEditorIntent.TitleChanged("Escapada"))
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Escapada")))
 
         viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
         advanceUntilIdle()
@@ -447,7 +450,7 @@ class NoteEditorViewModelTest {
         viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
         advanceUntilIdle()
 
-        viewModel.onIntent(NoteEditorIntent.TitleChanged("Escapada"))
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Escapada")))
         advanceUntilIdle()
 
         val stored = repository.notes.values.single()
@@ -547,7 +550,7 @@ class NoteEditorViewModelTest {
     fun `given new note with title created by adding image and image removed when back clicked then keeps the note`() =
         runTest {
             val viewModel = createViewModel()
-            viewModel.onIntent(NoteEditorIntent.TitleChanged("Escapada"))
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Escapada")))
             viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
             advanceUntilIdle()
             viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(viewModel.state.value.images.single()))
@@ -1020,7 +1023,7 @@ class NoteEditorViewModelTest {
         viewModel.onIntent(NoteEditorIntent.ColorApplied)
         advanceUntilIdle()
 
-        viewModel.onIntent(NoteEditorIntent.TitleChanged("Recetas"))
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Recetas")))
         advanceUntilIdle()
 
         val stored = repository.notes.values.single()
@@ -1348,6 +1351,598 @@ class NoteEditorViewModelTest {
         assertEquals(withTask, repository.notes[withTask.id])
     }
 
+    @Test
+    fun `given new note when created then cannot undo`() = runTest {
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given existing note when loaded then cannot undo`() = runTest {
+        repository.notes[existing.id] = existing
+
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given words typed letter by letter when undo clicked twice then removes one word at a time`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.typeInContent("Hola mundo")
+        assertTrue(viewModel.state.value.canUndo)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        assertEquals("Hola ", viewModel.state.value.content.text)
+        assertTrue(viewModel.state.value.canUndo)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        assertEquals("", viewModel.state.value.content.text)
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given pause while typing a word when undo clicked then removes each part separately`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.typeInContent("Para")
+        advanceTimeBy(NoteEditorViewModel.UNDO_PAUSE_MS)
+        runCurrent()
+        viewModel.typeInContent("guas")
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        assertEquals("Para", viewModel.state.value.content.text)
+        assertTrue(viewModel.state.value.canUndo)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        assertEquals("", viewModel.state.value.content.text)
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given pause shorter than undo pause while typing a word when undo clicked then removes the whole word`() =
+        runTest {
+            val viewModel = createViewModel()
+            viewModel.typeInContent("Para")
+            advanceTimeBy(NoteEditorViewModel.UNDO_PAUSE_MS - 1)
+            runCurrent()
+            viewModel.typeInContent("guas")
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            assertEquals("", viewModel.state.value.content.text)
+            assertFalse(viewModel.state.value.canUndo)
+        }
+
+    @Test
+    fun `given cursor moved in content between typing when undo clicked then removes only the last typing`() =
+        runTest {
+            val viewModel = createViewModel()
+            viewModel.typeInContent("Hola")
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Hola", TextRange(0))))
+
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("¡Hola", TextRange(1))))
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            assertEquals(TextFieldValue("Hola", TextRange(0)), viewModel.state.value.content)
+            assertTrue(viewModel.state.value.canUndo)
+        }
+
+    @Test
+    fun `given cursor moved in title between typing when undo clicked then removes only the last typing`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.typeInTitle("Hola")
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Hola", TextRange(0))))
+
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("¡Hola", TextRange(1))))
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        assertEquals(TextFieldValue("Hola", TextRange(0)), viewModel.state.value.title)
+        assertTrue(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given title then content typed when undo clicked twice then undoes content first and then title`() =
+        runTest {
+            val viewModel = createViewModel()
+            viewModel.typeInTitle("Compra")
+            viewModel.typeInContent("Pan")
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            val afterFirst = viewModel.state.value
+            assertEquals("Compra", afterFirst.title.text)
+            assertEquals("", afterFirst.content.text)
+            assertEquals(EditField.CONTENT, afterFirst.focusRequest?.field)
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            val afterSecond = viewModel.state.value
+            assertEquals("", afterSecond.title.text)
+            assertEquals("", afterSecond.content.text)
+            assertEquals(EditField.TITLE, afterSecond.focusRequest?.field)
+            assertTrue(afterSecond.focusRequest?.id != afterFirst.focusRequest?.id)
+            assertFalse(afterSecond.canUndo)
+        }
+
+    @Test
+    fun `given format applied to selection when undo clicked then restores spans and selection`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val selection = TextRange(0, 5)
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, selection)))
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+        assertTrue(viewModel.state.value.canUndo)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        val state = viewModel.state.value
+        assertTrue(state.contentSpans.isEmpty())
+        assertEquals(TextFieldValue(existing.content, selection), state.content)
+        assertEquals(emptySet<TextFormat>(), state.activeFormats)
+        assertFalse(state.canUndo)
+    }
+
+    @Test
+    fun `given checklist clicked when undo clicked then line returns to text`() = runTest {
+        val plain = existing.copy(content = "Leche\nPan")
+        repository.notes[plain.id] = plain
+        val viewModel = createViewModel(plain.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(plain.content, TextRange(7))))
+        viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+        assertTrue(viewModel.state.value.canUndo)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        val state = viewModel.state.value
+        assertTrue(state.contentTasks.isEmpty())
+        assertEquals(TextFieldValue(plain.content, TextRange(7)), state.content)
+        assertFalse(state.canUndo)
+    }
+
+    @Test
+    fun `given task toggled with cursor in title when undo clicked then task is pending and focus goes to content`() =
+        runTest {
+            val withTasks = existing.copy(content = "Leche\nPan", contentTasks = listOf(task(0), task(1)))
+            repository.notes[withTasks.id] = withTasks
+            val viewModel = createViewModel(withTasks.id)
+            advanceUntilIdle()
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(withTasks.content, TextRange(3))))
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue(withTasks.title, TextRange(2))))
+            viewModel.onIntent(NoteEditorIntent.TaskToggled(line = 1))
+            assertTrue(viewModel.state.value.canUndo)
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            val state = viewModel.state.value
+            assertEquals(listOf(task(0), task(1)), state.contentTasks)
+            assertEquals(EditField.CONTENT, state.focusRequest?.field)
+            assertEquals(TextRange(3), state.content.selection)
+            assertFalse(state.canUndo)
+        }
+
+    @Test
+    fun `given format chosen without selection when nothing typed then cannot undo`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(5))))
+
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given other color applied when intents received then cannot undo`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.LAVENDER))
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.LAVENDER, viewModel.state.value.color)
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given category clicked when intent received then cannot undo`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.entries.first()))
+        advanceUntilIdle()
+
+        assertEquals(NoteCategory.entries.first(), viewModel.state.value.category)
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given pin clicked when intent received then cannot undo`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.isPinned)
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given typing then color changed when undo clicked then undoes typing and keeps the color`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.moveContentCursorToEnd()
+        viewModel.typeInContent("!")
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.LAVENDER))
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(existing.content, state.content.text)
+        assertEquals(NoteColor.LAVENDER, state.color)
+        assertEquals(NoteColor.LAVENDER, repository.notes.getValue(existing.id).color)
+    }
+
+    @Test
+    fun `given selection replaced by typing when undo clicked then restores that selection in content`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val selection = TextRange(0, 5)
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, selection)))
+        val replaced = "X" + existing.content.substring(5)
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(replaced, TextRange(1))))
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        val state = viewModel.state.value
+        assertEquals(TextFieldValue(existing.content, selection), state.content)
+        assertEquals(FocusRequest(EditField.CONTENT, id = 1), state.focusRequest)
+    }
+
+    @Test
+    fun `given bold activated without selection and text typed when undo clicked then text and bold go away`() =
+        runTest {
+            val viewModel = createViewModel()
+            viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+            viewModel.typeInContent("Hola")
+            assertEquals(listOf(FormatSpan(0, 4, TextFormat.BOLD)), viewModel.state.value.contentSpans)
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            val state = viewModel.state.value
+            assertEquals("", state.content.text)
+            assertTrue(state.contentSpans.isEmpty())
+            assertEquals(emptySet<TextFormat>(), state.activeFormats)
+            assertFalse(state.canUndo)
+        }
+
+    @Test
+    fun `given cursor moved out of bold text after typing when undo clicked then active formats follow restored cursor`() =
+        runTest {
+            val spans = listOf(FormatSpan(0, 5, TextFormat.BOLD))
+            val formatted = existing.copy(contentSpans = spans)
+            repository.notes[formatted.id] = formatted
+            val viewModel = createViewModel(formatted.id)
+            advanceUntilIdle()
+            viewModel.moveContentCursorToEnd()
+            viewModel.typeInContent("!")
+            val typed = viewModel.state.value.content.text
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(typed, TextRange(5))))
+            assertEquals(setOf(TextFormat.BOLD), viewModel.state.value.activeFormats)
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            val state = viewModel.state.value
+            assertEquals(TextFieldValue(formatted.content, TextRange(formatted.content.length)), state.content)
+            assertEquals(emptySet<TextFormat>(), state.activeFormats)
+        }
+
+    @Test
+    fun `given two steps on existing note when one undone then saves undone text with a new date`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        repository.notes[old.id] = old
+        val viewModel = createViewModel(old.id)
+        advanceUntilIdle()
+        viewModel.moveContentCursorToEnd()
+        viewModel.typeInContent(" Sí")
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        advanceTimeBy(NoteEditorViewModel.AUTOSAVE_DELAY_MS - 1)
+        runCurrent()
+
+        assertEquals(old.content + " Sí", repository.notes.getValue(old.id).content)
+
+        advanceUntilIdle()
+
+        val stored = repository.notes.getValue(old.id)
+        assertEquals(old.content + " ", stored.content)
+        assertEquals(NOW, stored.updatedAt)
+        assertEquals(dateFormatter.format(NOW), viewModel.state.value.date)
+        assertTrue(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given existing note when undone back to opened state then keeps its original date`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        repository.notes[old.id] = old
+        val viewModel = createViewModel(old.id)
+        advanceUntilIdle()
+        viewModel.moveContentCursorToEnd()
+        viewModel.typeInContent("!")
+        advanceUntilIdle()
+        assertEquals(NOW, repository.notes.getValue(old.id).updatedAt)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        advanceUntilIdle()
+
+        assertEquals(old, repository.notes[old.id])
+        assertEquals(dateFormatter.format(old.updatedAt), viewModel.state.value.date)
+        assertFalse(viewModel.state.value.canUndo)
+    }
+
+    @Test
+    fun `given color changed when undone back to opened text then saves with a new date`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        repository.notes[old.id] = old
+        val viewModel = createViewModel(old.id)
+        advanceUntilIdle()
+        viewModel.moveContentCursorToEnd()
+        viewModel.typeInContent("!")
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.LAVENDER))
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        advanceUntilIdle()
+
+        assertEquals(old.copy(color = NoteColor.LAVENDER, updatedAt = NOW), repository.notes[old.id])
+        assertEquals(dateFormatter.format(NOW), viewModel.state.value.date)
+    }
+
+    @Test
+    fun `given undo back to opened state when edited before autosave then saves with a new date`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        repository.notes[old.id] = old
+        val viewModel = createViewModel(old.id)
+        advanceUntilIdle()
+        viewModel.moveContentCursorToEnd()
+        viewModel.typeInContent("!")
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        advanceTimeBy(NoteEditorViewModel.AUTOSAVE_DELAY_MS - 1)
+        runCurrent()
+        // Escribe y borra un carácter: el texto vuelve al de apertura, pero la última edición ya no es deshacer.
+        viewModel.typeInContent("?")
+        val restored = viewModel.state.value.content.text.dropLast(1)
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(restored, TextRange(restored.length))))
+        advanceUntilIdle()
+
+        val stored = repository.notes.getValue(old.id)
+        assertEquals(old.content, stored.content)
+        assertEquals(NOW, stored.updatedAt)
+        assertEquals(dateFormatter.format(NOW), viewModel.state.value.date)
+    }
+
+    @Test
+    fun `given new note when every step undone then is empty and nothing is stored`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.typeInTitle("Compra")
+        viewModel.typeInContent("Pan y leche")
+
+        repeat(4) { viewModel.onIntent(NoteEditorIntent.UndoClicked) }
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals("", state.title.text)
+        assertEquals("", state.content.text)
+        assertFalse(state.canUndo)
+        assertTrue(repository.notes.isEmpty())
+    }
+
+    @Test
+    fun `given enter typed on an empty task when undo clicked then the line is a task again`() = runTest {
+        val emptyTask = existing.copy(content = "A\n", contentTasks = listOf(task(1)))
+        repository.notes[emptyTask.id] = emptyTask
+        val viewModel = createViewModel(emptyTask.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("A\n", TextRange(2))))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("A\n\n", TextRange(3))))
+        assertTrue(viewModel.state.value.contentTasks.isEmpty())
+        assertTrue(viewModel.state.value.canUndo)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        val state = viewModel.state.value
+        assertEquals(listOf(task(1)), state.contentTasks)
+        assertEquals(TextFieldValue("A\n", TextRange(2)), state.content)
+        assertFalse(state.canUndo)
+    }
+
+    @Test
+    fun `given backspace at start of a task when undo clicked then the line is a task again`() = runTest {
+        val withTask = existing.copy(content = "a\nb", contentTasks = listOf(task(1)))
+        repository.notes[withTask.id] = withTask
+        val viewModel = createViewModel(withTask.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("a\nb", TextRange(2))))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("ab", TextRange(1))))
+        assertTrue(viewModel.state.value.contentTasks.isEmpty())
+        assertTrue(viewModel.state.value.canUndo)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        val state = viewModel.state.value
+        assertEquals(listOf(task(1)), state.contentTasks)
+        assertEquals(TextFieldValue("a\nb", TextRange(2)), state.content)
+        assertFalse(state.canUndo)
+    }
+
+    @Test
+    fun `given no steps when undo clicked then state does not change and nothing is saved`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val before = viewModel.state.value
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        advanceUntilIdle()
+
+        assertEquals(before, viewModel.state.value)
+        assertEquals(0, repository.saveCount)
+    }
+
+    @Test
+    fun `given focus request when handled with its id then focus request is cleared`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.typeInContent("Hola")
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        assertEquals(FocusRequest(EditField.CONTENT, id = 1), viewModel.state.value.focusRequest)
+
+        viewModel.onIntent(NoteEditorIntent.FocusRequestHandled(id = 1))
+
+        assertEquals(null, viewModel.state.value.focusRequest)
+    }
+
+    @Test
+    fun `given newer focus request when older id handled then state does not change`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.typeInTitle("Compra")
+        viewModel.typeInContent("Pan")
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        val before = viewModel.state.value
+        assertEquals(FocusRequest(EditField.TITLE, id = 2), before.focusRequest)
+
+        viewModel.onIntent(NoteEditorIntent.FocusRequestHandled(id = 1))
+
+        assertEquals(before, viewModel.state.value)
+    }
+
+    @Test
+    fun `given focus request handled when undo clicked again then new request has a greater id`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.typeInTitle("Compra")
+        viewModel.typeInContent("Pan")
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        val first = viewModel.state.value.focusRequest
+        assertEquals(FocusRequest(EditField.CONTENT, id = 1), first)
+        viewModel.onIntent(NoteEditorIntent.FocusRequestHandled(id = 1))
+        assertEquals(null, viewModel.state.value.focusRequest)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+        val second = viewModel.state.value.focusRequest
+        assertEquals(EditField.TITLE, second?.field)
+        assertTrue((second?.id ?: 0) > (first?.id ?: 0))
+    }
+
+    @Test
+    fun `given selection with format and tasks when text pasted over it and undo clicked then restores text spans and tasks in one step`() =
+        runTest {
+            val spans = listOf(FormatSpan(6, 9, TextFormat.BOLD))
+            val tasks = listOf(task(1, isDone = true), task(2))
+            val rich = existing.copy(content = "Leche\nPan\nHuevos", contentSpans = spans, contentTasks = tasks)
+            repository.notes[rich.id] = rich
+            val viewModel = createViewModel(rich.id)
+            advanceUntilIdle()
+            val selection = TextRange(3, 12)
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(rich.content, selection)))
+            val pasted = "Lec" + "XYZ" + rich.content.substring(12)
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(pasted, TextRange(6))))
+            val afterPaste = viewModel.state.value
+            assertEquals(pasted, afterPaste.content.text)
+            assertTrue(afterPaste.contentSpans != spans)
+            assertTrue(afterPaste.contentTasks != tasks)
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            val state = viewModel.state.value
+            assertEquals(TextFieldValue(rich.content, selection), state.content)
+            assertEquals(spans, state.contentSpans)
+            assertEquals(tasks, state.contentTasks)
+            assertFalse(state.canUndo)
+        }
+
+    @Test
+    fun `given task with text when enter typed at its end and undo clicked then removes break and new task`() =
+        runTest {
+            val withTask = existing.copy(content = "Leche", contentTasks = listOf(task(0, isDone = true)))
+            repository.notes[withTask.id] = withTask
+            val viewModel = createViewModel(withTask.id)
+            advanceUntilIdle()
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Leche", TextRange(5))))
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Leche\n", TextRange(6))))
+            assertEquals(listOf(task(0, isDone = true), task(1)), viewModel.state.value.contentTasks)
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            val state = viewModel.state.value
+            assertEquals(TextFieldValue("Leche", TextRange(5)), state.content)
+            assertEquals(listOf(task(0, isDone = true)), state.contentTasks)
+            assertFalse(state.canUndo)
+        }
+
+    @Test
+    fun `given long word typed for more than a second without pauses when undo clicked then removes the whole word`() =
+        runTest {
+            val viewModel = createViewModel()
+            val word = "Paralelepi"
+            word.forEachIndexed { index, char ->
+                if (index > 0) advanceTimeBy(LETTER_INTERVAL_MS)
+                viewModel.typeInContent(char.toString())
+            }
+            runCurrent()
+            assertTrue((word.length - 1) * LETTER_INTERVAL_MS > 1_000)
+            assertEquals(word, viewModel.state.value.content.text)
+
+            viewModel.onIntent(NoteEditorIntent.UndoClicked)
+
+            assertEquals("", viewModel.state.value.content.text)
+            assertFalse(viewModel.state.value.canUndo)
+        }
+
+    /** Escribe [text] en el contenido letra a letra, con el cursor al final, como un teclado. */
+    private fun NoteEditorViewModel.typeInContent(text: String) {
+        text.forEach { char ->
+            val typed = state.value.content.text + char
+            onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(typed, TextRange(typed.length))))
+        }
+    }
+
+    /** Escribe [text] en el título letra a letra, con el cursor al final, como un teclado. */
+    private fun NoteEditorViewModel.typeInTitle(text: String) {
+        text.forEach { char ->
+            val typed = state.value.title.text + char
+            onIntent(NoteEditorIntent.TitleChanged(TextFieldValue(typed, TextRange(typed.length))))
+        }
+    }
+
+    /** Lleva el cursor del contenido al final sin cambiar el texto. */
+    private fun NoteEditorViewModel.moveContentCursorToEnd() {
+        val text = state.value.content.text
+        onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(text, TextRange(text.length))))
+    }
+
     private fun task(line: Int, isDone: Boolean = false) = ChecklistItem(line, isDone)
 
     private class InMemoryNoteRepository : NoteRepository {
@@ -1417,6 +2012,8 @@ class NoteEditorViewModelTest {
     private companion object {
         const val NOW = 1_700_000_000_000L
         const val TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1_000L
+        /** Intervalo entre letras de un tecleo continuo: menor que la pausa que cierra el paso. */
+        const val LETTER_INTERVAL_MS = 300L
         const val URI_A = "content://media/picker/a"
         const val URI_B = "content://media/picker/b"
 

@@ -74,6 +74,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import coil3.compose.AsyncImage
 import com.example.notesapp.domain.notes.ChecklistItem
+import com.example.notesapp.domain.notes.EditField
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
@@ -108,6 +109,7 @@ object NoteEditorTestTags {
     const val TOOLBAR_FORMAT = "note_editor_toolbar_format"
     const val TOOLBAR_COLOR = "note_editor_toolbar_color"
     const val TOOLBAR_CHECKLIST = "note_editor_toolbar_checklist"
+    const val TOOLBAR_UNDO = "note_editor_toolbar_undo"
     const val TASK_CHECKBOX = "note_editor_task_"
     const val FORMAT_MENU = "note_editor_format_menu"
     const val FORMAT_OPTION = "note_editor_format_"
@@ -163,7 +165,7 @@ fun NoteEditorScreen(
         DeleteNoteDialog(onIntent = onIntent)
     }
     state.pickerColor?.let { pickerColor ->
-        NoteColorSheet(noteTitle = state.title, pickerColor = pickerColor, onIntent = onIntent)
+        NoteColorSheet(noteTitle = state.title.text, pickerColor = pickerColor, onIntent = onIntent)
     }
 }
 
@@ -266,9 +268,20 @@ private fun NoteContent(
     val spacing = NotesTheme.spacing
     val colors = MaterialTheme.colorScheme
     val titleFocusRequester = remember { FocusRequester() }
+    val contentFocusRequester = remember { FocusRequester() }
     // En una nota nueva el cursor empieza en el título para escribir de inmediato.
     LaunchedEffect(Unit) {
         if (state.isNewNote) titleFocusRequester.requestFocus()
+    }
+    // Al deshacer, el cursor vuelve al campo que cambió el paso. La petición se marca como atendida para que
+    // no se repita al recrear la pantalla (por ejemplo, al girarla).
+    LaunchedEffect(state.focusRequest) {
+        val request = state.focusRequest ?: return@LaunchedEffect
+        when (request.field) {
+            EditField.TITLE -> titleFocusRequester.requestFocus()
+            EditField.CONTENT -> contentFocusRequester.requestFocus()
+        }
+        onIntent(NoteEditorIntent.FocusRequestHandled(request.id))
     }
     Column(
         modifier = modifier
@@ -296,7 +309,7 @@ private fun NoteContent(
         if (state.images.isNotEmpty()) {
             NoteImages(images = state.images, onIntent = onIntent)
         }
-        ContentField(state = state, onIntent = onIntent)
+        ContentField(state = state, focusRequester = contentFocusRequester, onIntent = onIntent)
     }
 }
 
@@ -433,6 +446,7 @@ private fun NoteCategory.descriptionRes(): Int = when (this) {
 @Composable
 private fun ContentField(
     state: NoteEditorUiState,
+    focusRequester: FocusRequester,
     onIntent: (NoteEditorIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -455,6 +469,7 @@ private fun ContentField(
             showPlaceholder = state.content.text.isEmpty() && state.contentTasks.isEmpty(),
             onTextLayout = { layout = it },
             modifier = Modifier
+                .focusRequester(focusRequester)
                 .onFocusChanged { onIntent(NoteEditorIntent.ContentFocusChanged(it.isFocused)) }
                 .testTag(NoteEditorTestTags.CONTENT),
         )
@@ -485,7 +500,7 @@ private fun ContentField(
     }
 }
 
-/** Campo del contenido: trabaja con la selección para poder aplicar formato. */
+/** Campo del título y del contenido: trabaja con la selección para aplicar formato y para deshacer. */
 @Composable
 private fun EditorTextField(
     value: TextFieldValue,
@@ -509,28 +524,6 @@ private fun EditorTextField(
         cursorBrush = SolidColor(colors.primary),
         decorationBox = { innerTextField ->
             EditorFieldDecoration(isEmpty = showPlaceholder, placeholder, textStyle, innerTextField)
-        },
-    )
-}
-
-@Composable
-private fun EditorTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    textStyle: TextStyle,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.editorField(placeholder),
-        textStyle = textStyle.copy(color = colors.onBackground),
-        keyboardOptions = EditorKeyboardOptions,
-        cursorBrush = SolidColor(colors.primary),
-        decorationBox = { innerTextField ->
-            EditorFieldDecoration(isEmpty = value.isEmpty(), placeholder, textStyle, innerTextField)
         },
     )
 }
@@ -666,7 +659,17 @@ private fun EditorToolbar(
             onClick = { onIntent(NoteEditorIntent.AddImageClicked) },
             modifier = Modifier.testTag(NoteEditorTestTags.TOOLBAR_IMAGE),
         )
-        ToolbarButton(R.drawable.ic_undo, R.string.note_editor_toolbar_undo)
+        // Deshace cambios del título y del contenido: no depende de dónde esté el foco.
+        ToolbarButton(
+            iconRes = R.drawable.ic_undo,
+            labelRes = R.string.note_editor_toolbar_undo,
+            onClick = if (state.canUndo) {
+                { onIntent(NoteEditorIntent.UndoClicked) }
+            } else {
+                null
+            },
+            modifier = Modifier.testTag(NoteEditorTestTags.TOOLBAR_UNDO),
+        )
         val colorLabel = stringResource(R.string.note_editor_toolbar_color)
         val noteColors = NotesTheme.noteColors
         IconButton(
@@ -861,7 +864,7 @@ private fun NoteEditorScreenFormatMenuPreview() {
         NoteEditorScreen(
             state = NoteEditorUiState(
                 isNewNote = false,
-                title = "Lista de la semana",
+                title = TextFieldValue("Lista de la semana"),
                 content = TextFieldValue("Comprar pan\nLlamar al banco\nRevisar el informe", TextRange(0, 11)),
                 contentSpans = listOf(FormatSpan(0, 11, TextFormat.BOLD), FormatSpan(12, 27, TextFormat.STRIKETHROUGH)),
                 activeFormats = setOf(TextFormat.BOLD),
@@ -880,7 +883,7 @@ private fun NoteEditorScreenPreview() {
         NoteEditorScreen(
             state = NoteEditorUiState(
                 isNewNote = false,
-                title = "Reunión de equipo",
+                title = TextFieldValue("Reunión de equipo"),
                 content = TextFieldValue(
                     "Ideas y próximos pasos para el nuevo lanzamiento. Menos ruido, más foco.\n\n" +
                         "Una idea para recordar: dejar espacio para lo importante.",
@@ -902,7 +905,7 @@ private fun NoteEditorScreenPreview() {
 
 private val ColorPreviewState = NoteEditorUiState(
     isNewNote = false,
-    title = "Reunión de equipo",
+    title = TextFieldValue("Reunión de equipo"),
     content = TextFieldValue("Ideas y próximos pasos para el nuevo lanzamiento. Menos ruido, más foco."),
     contentSpans = listOf(FormatSpan(0, 22, TextFormat.BOLD)),
     category = NoteCategory.PERSONAL,
@@ -917,7 +920,7 @@ private fun NoteEditorScreenChecklistPreview() {
         NoteEditorScreen(
             state = NoteEditorUiState(
                 isNewNote = false,
-                title = "Reunión de equipo",
+                title = TextFieldValue("Reunión de equipo"),
                 content = TextFieldValue(
                     "Mis pendientes\nEnviar el resumen al equipo\nPreparar la propuesta visual\n" +
                         "Revisar los textos de bienvenida antes de compartir el prototipo el viernes",

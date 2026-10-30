@@ -22,10 +22,13 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -37,6 +40,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.notesapp.domain.notes.ChecklistItem
+import com.example.notesapp.domain.notes.EditField
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteImage
@@ -75,7 +79,7 @@ class NoteEditorScreenTest {
     fun given_note_when_displayed_then_shows_title_content_date_and_saved_status() {
         setContent(
             NoteEditorUiState(
-                title = "Reunión de equipo",
+                title = TextFieldValue("Reunión de equipo"),
                 content = TextFieldValue("Menos ruido, más foco."),
                 date = NoteDateLabel.Yesterday,
                 saveStatus = SaveStatus.Saved,
@@ -113,31 +117,32 @@ class NoteEditorScreenTest {
         composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).performTextInput("Libreta")
 
         assertEquals(
-            listOf(NoteEditorIntent.TitleChanged("Ideas"), NoteEditorIntent.ContentChanged(TextFieldValue("Libreta"))),
+            listOf(NoteEditorIntent.TitleChanged(TextFieldValue("Ideas")), NoteEditorIntent.ContentChanged(TextFieldValue("Libreta"))),
             userIntents.withoutSelectionOnlyContentChanges(),
         )
     }
 
     /**
-     * La selección depende del cursor: solo se compara el texto. Además, el campo de contenido puede emitir
-     * cambios solo de selección (mismo texto) según el momento; se descartan los `ContentChanged` que repiten
-     * el texto del `ContentChanged` inmediatamente anterior.
+     * La selección depende del cursor: solo se compara el texto. Además, los campos de título y contenido
+     * pueden emitir cambios solo de selección (mismo texto) según el momento; se descartan los `TitleChanged`
+     * y `ContentChanged` que repiten el intent inmediatamente anterior.
      */
     private fun List<NoteEditorIntent>.withoutSelectionOnlyContentChanges(): List<NoteEditorIntent> =
         map { intent ->
-            if (intent is NoteEditorIntent.ContentChanged) {
-                NoteEditorIntent.ContentChanged(TextFieldValue(intent.content.text))
-            } else {
-                intent
+            when (intent) {
+                is NoteEditorIntent.TitleChanged -> NoteEditorIntent.TitleChanged(TextFieldValue(intent.title.text))
+                is NoteEditorIntent.ContentChanged -> NoteEditorIntent.ContentChanged(TextFieldValue(intent.content.text))
+                else -> intent
             }
         }.fold(emptyList()) { acc, intent ->
             val previous = acc.lastOrNull()
-            if (intent is NoteEditorIntent.ContentChanged && previous == intent) acc else acc + intent
+            val isTextChange = intent is NoteEditorIntent.TitleChanged || intent is NoteEditorIntent.ContentChanged
+            if (isTextChange && previous == intent) acc else acc + intent
         }
 
     @Test
     fun given_editor_when_back_and_pin_clicked_then_sends_intents() {
-        setContent(NoteEditorUiState(title = "Ideas"))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas")))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.PIN).performClick()
         composeRule.onNodeWithTag(NoteEditorTestTags.BACK).performClick()
@@ -147,7 +152,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_more_options_when_delete_selected_then_sends_delete_clicked() {
-        setContent(NoteEditorUiState(title = "Ideas"))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas")))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.MORE).performClick()
         composeRule.onNodeWithTag(NoteEditorTestTags.DELETE).performClick()
@@ -157,7 +162,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_delete_dialog_when_confirmed_or_cancelled_then_sends_intents() {
-        setContent(NoteEditorUiState(title = "Ideas", isDeleteDialogVisible = true))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isDeleteDialogVisible = true))
 
         composeRule.onNodeWithText("¿Eliminar esta nota?").assertIsDisplayed()
         composeRule.onNodeWithText("Cancelar").performClick()
@@ -176,7 +181,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_note_with_category_when_displayed_then_shows_category_tag() {
-        setContent(NoteEditorUiState(title = "Ideas", category = NoteCategory.WORK, date = NoteDateLabel.Yesterday))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), category = NoteCategory.WORK, date = NoteDateLabel.Yesterday))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.CATEGORY_TAG)
             .assertIsDisplayed()
@@ -185,21 +190,21 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_note_with_personal_category_when_displayed_then_tag_shows_personal() {
-        setContent(NoteEditorUiState(title = "Ideas", category = NoteCategory.PERSONAL))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), category = NoteCategory.PERSONAL))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.CATEGORY_TAG).assertTextEquals(string(R.string.note_category_personal))
     }
 
     @Test
     fun given_note_without_category_when_displayed_then_hides_category_tag() {
-        setContent(NoteEditorUiState(title = "Ideas", category = null, date = NoteDateLabel.Yesterday))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), category = null, date = NoteDateLabel.Yesterday))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.CATEGORY_TAG).assertDoesNotExist()
     }
 
     @Test
     fun given_category_options_when_clicked_then_sends_category_clicked() {
-        setContent(NoteEditorUiState(title = "Ideas"))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas")))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.CATEGORY_OPTION + NoteCategory.WORK.name).performClick()
         composeRule.onNodeWithTag(NoteEditorTestTags.CATEGORY_OPTION + NoteCategory.PERSONAL.name).performClick()
@@ -215,7 +220,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_selected_category_when_displayed_then_only_that_option_is_selected() {
-        setContent(NoteEditorUiState(title = "Ideas", category = NoteCategory.PERSONAL))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), category = NoteCategory.PERSONAL))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.CATEGORY_OPTION + NoteCategory.PERSONAL.name).assertIsSelected()
         composeRule.onNodeWithTag(NoteEditorTestTags.CATEGORY_OPTION + NoteCategory.WORK.name).assertIsNotSelected()
@@ -223,7 +228,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_editor_when_image_button_clicked_then_sends_add_image_clicked() {
-        setContent(NoteEditorUiState(title = "Ideas"))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas")))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_IMAGE).assertIsEnabled().performClick()
 
@@ -232,7 +237,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_editor_when_disabled_toolbar_buttons_clicked_then_sends_nothing() {
-        setContent(NoteEditorUiState(title = "Ideas"))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas")))
 
         listOf(
             R.string.note_editor_toolbar_text,
@@ -246,8 +251,138 @@ class NoteEditorScreenTest {
     }
 
     @Test
+    fun given_nothing_to_undo_when_undo_clicked_then_is_disabled_and_sends_nothing() {
+        setContent(NoteEditorUiState(isNewNote = false, title = TextFieldValue("Ideas"), canUndo = false))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_UNDO).assertIsNotEnabled().performClick()
+
+        assertTrue(userIntents.isEmpty())
+    }
+
+    @Test
+    fun given_can_undo_with_title_focused_when_displayed_then_undo_is_enabled() {
+        setContent(NoteEditorUiState(isNewNote = false, title = TextFieldValue("Ideas"), canUndo = true, isContentFocused = false))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_UNDO).assertIsEnabled()
+    }
+
+    @Test
+    fun given_can_undo_with_content_focused_when_displayed_then_undo_is_enabled() {
+        setContent(NoteEditorUiState(isNewNote = false, title = TextFieldValue("Ideas"), canUndo = true, isContentFocused = true))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_UNDO).assertIsEnabled()
+    }
+
+    @Test
+    fun given_can_undo_when_undo_clicked_then_sends_undo_clicked() {
+        setContent(NoteEditorUiState(isNewNote = false, title = TextFieldValue("Ideas"), canUndo = true))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_UNDO).performClick()
+
+        assertEquals(listOf<NoteEditorIntent>(NoteEditorIntent.UndoClicked), userIntents)
+    }
+
+    @Test
+    fun given_editor_when_displayed_then_undo_button_is_labelled_undo() {
+        setContent(NoteEditorUiState(isNewNote = false, title = TextFieldValue("Ideas"), canUndo = true))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_UNDO)
+            .assertContentDescriptionEquals(string(R.string.note_editor_toolbar_undo))
+    }
+
+    @Test
+    fun given_focus_request_to_content_when_displayed_then_content_is_focused() {
+        setContent(focusState(FocusRequest(EditField.CONTENT, id = 1)))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).assertIsFocused()
+        composeRule.onNodeWithTag(NoteEditorTestTags.TITLE).assertIsNotFocused()
+    }
+
+    @Test
+    fun given_focus_request_to_title_when_displayed_then_title_is_focused() {
+        setContent(focusState(FocusRequest(EditField.TITLE, id = 1)))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TITLE).assertIsFocused()
+        composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).assertIsNotFocused()
+    }
+
+    @Test
+    fun given_focus_request_when_focus_moved_then_sends_focus_request_handled_with_its_id() {
+        setContent(focusState(FocusRequest(EditField.CONTENT, id = 7)))
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).assertIsFocused()
+        assertEquals(
+            listOf(NoteEditorIntent.FocusRequestHandled(id = 7)),
+            intents.filterIsInstance<NoteEditorIntent.FocusRequestHandled>(),
+        )
+    }
+
+    @Test
+    fun given_handled_focus_request_when_screen_recreated_then_focus_does_not_jump_back() {
+        var state by mutableStateOf(focusState(FocusRequest(EditField.TITLE, id = 1)))
+        val restorationTester = StateRestorationTester(composeRule)
+        restorationTester.setContent {
+            NotesAppTheme {
+                NoteEditorScreen(state = state, onIntent = { intent -> intents += intent; state = state.handling(intent) })
+            }
+        }
+        composeRule.onNodeWithTag(NoteEditorTestTags.TITLE).assertIsFocused()
+        composeRule.waitForIdle()
+        assertEquals(null, state.focusRequest)
+        composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).performClick()
+        composeRule.onNodeWithTag(NoteEditorTestTags.TITLE).assertIsNotFocused()
+
+        restorationTester.emulateSavedInstanceStateRestore()
+
+        composeRule.onNodeWithTag(NoteEditorTestTags.TITLE).assertIsNotFocused()
+        assertEquals(
+            listOf(NoteEditorIntent.FocusRequestHandled(id = 1)),
+            intents.filterIsInstance<NoteEditorIntent.FocusRequestHandled>(),
+        )
+    }
+
+    /** Como el ViewModel: atender la petición de foco vigente la borra; una antigua no cambia nada. */
+    private fun NoteEditorUiState.handling(intent: NoteEditorIntent): NoteEditorUiState =
+        if (intent is NoteEditorIntent.FocusRequestHandled && focusRequest?.id == intent.id) copy(focusRequest = null) else this
+
+    @Test
+    fun given_successive_focus_requests_when_state_changes_then_focus_follows_each_request() {
+        var state by mutableStateOf(focusState(focusRequest = null))
+        composeRule.setContent {
+            NotesAppTheme {
+                NoteEditorScreen(state = state, onIntent = { intent -> intents += intent; state = state.handling(intent) })
+            }
+        }
+        composeRule.onNodeWithTag(NoteEditorTestTags.TITLE).assertIsNotFocused()
+        composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).assertIsNotFocused()
+
+        state = state.copy(focusRequest = FocusRequest(EditField.CONTENT, id = 1))
+        composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).assertIsFocused()
+
+        state = state.copy(focusRequest = FocusRequest(EditField.TITLE, id = 2))
+        composeRule.onNodeWithTag(NoteEditorTestTags.TITLE).assertIsFocused()
+        composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).assertIsNotFocused()
+
+        state = state.copy(focusRequest = FocusRequest(EditField.CONTENT, id = 3))
+        composeRule.onNodeWithTag(NoteEditorTestTags.CONTENT).assertIsFocused()
+        composeRule.onNodeWithTag(NoteEditorTestTags.TITLE).assertIsNotFocused()
+        assertEquals(
+            listOf(1L, 2L, 3L).map { NoteEditorIntent.FocusRequestHandled(it) },
+            intents.filterIsInstance<NoteEditorIntent.FocusRequestHandled>(),
+        )
+    }
+
+    private fun focusState(focusRequest: FocusRequest?) = NoteEditorUiState(
+        isNewNote = false,
+        title = TextFieldValue("Ideas"),
+        content = TextFieldValue("Libreta"),
+        canUndo = true,
+        focusRequest = focusRequest,
+    )
+
+    @Test
     fun given_note_with_images_when_displayed_then_shows_each_image() {
-        setContent(NoteEditorUiState(title = "Escapada", images = listOf(firstImage, secondImage)))
+        setContent(NoteEditorUiState(title = TextFieldValue("Escapada"), images = listOf(firstImage, secondImage)))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.IMAGE + firstImage.id).assertExists()
         composeRule.onNodeWithTag(NoteEditorTestTags.IMAGE + secondImage.id).assertExists()
@@ -255,7 +390,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_note_without_images_when_displayed_then_shows_no_image() {
-        setContent(NoteEditorUiState(title = "Escapada"))
+        setContent(NoteEditorUiState(title = TextFieldValue("Escapada")))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.IMAGE + firstImage.id).assertDoesNotExist()
         composeRule.onNodeWithTag(NoteEditorTestTags.REMOVE_IMAGE + firstImage.id).assertDoesNotExist()
@@ -263,7 +398,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_note_with_images_when_remove_clicked_then_sends_remove_image_clicked_for_that_image() {
-        setContent(NoteEditorUiState(title = "Escapada", images = listOf(firstImage, secondImage)))
+        setContent(NoteEditorUiState(title = TextFieldValue("Escapada"), images = listOf(firstImage, secondImage)))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.REMOVE_IMAGE + secondImage.id).performScrollTo().performClick()
 
@@ -279,7 +414,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_content_not_focused_when_displayed_then_format_button_is_disabled() {
-        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = false))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isContentFocused = false))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_FORMAT).assertIsNotEnabled().performClick()
 
@@ -288,7 +423,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_content_focused_when_format_button_clicked_then_sends_format_button_clicked() {
-        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = true))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isContentFocused = true))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_FORMAT).assertIsEnabled().performClick()
 
@@ -298,7 +433,7 @@ class NoteEditorScreenTest {
     @Test
     fun given_focus_moves_between_content_and_title_when_tapped_then_format_button_follows_content_focus() {
         composeRule.setContent {
-            var state by remember { mutableStateOf(NoteEditorUiState(isNewNote = false, title = "Ideas")) }
+            var state by remember { mutableStateOf(NoteEditorUiState(isNewNote = false, title = TextFieldValue("Ideas"))) }
             NotesAppTheme {
                 NoteEditorScreen(
                     state = state,
@@ -326,7 +461,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_format_menu_hidden_when_displayed_then_shows_no_options() {
-        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = true))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isContentFocused = true))
 
         TextFormat.entries.forEach { format ->
             composeRule.onNodeWithTag(NoteEditorTestTags.FORMAT_OPTION + format.name).assertDoesNotExist()
@@ -335,7 +470,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_format_menu_visible_when_displayed_then_shows_three_options_with_their_labels() {
-        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = true, isFormatMenuVisible = true))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isContentFocused = true, isFormatMenuVisible = true))
 
         mapOf(
             TextFormat.BOLD to R.string.note_editor_format_bold,
@@ -350,7 +485,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_format_menu_visible_when_option_clicked_then_sends_format_selected() {
-        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = true, isFormatMenuVisible = true))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isContentFocused = true, isFormatMenuVisible = true))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.FORMAT_OPTION + TextFormat.UNDERLINE.name).performClick()
 
@@ -361,7 +496,7 @@ class NoteEditorScreenTest {
     fun given_active_formats_when_menu_visible_then_options_describe_active_or_inactive_state() {
         setContent(
             NoteEditorUiState(
-                title = "Ideas",
+                title = TextFieldValue("Ideas"),
                 isContentFocused = true,
                 isFormatMenuVisible = true,
                 activeFormats = setOf(TextFormat.BOLD, TextFormat.STRIKETHROUGH),
@@ -378,7 +513,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_editor_when_color_button_clicked_then_sends_color_button_clicked() {
-        setContent(NoteEditorUiState(title = "Ideas"))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas")))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_COLOR)
             .assertContentDescriptionEquals(string(R.string.note_editor_toolbar_color))
@@ -390,14 +525,14 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_picker_color_null_when_displayed_then_color_sheet_is_hidden() {
-        setContent(NoteEditorUiState(title = "Ideas", pickerColor = null))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = null))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_SHEET).assertDoesNotExist()
     }
 
     @Test
     fun given_picker_color_when_displayed_then_sheet_shows_title_description_and_eight_options_with_labels() {
-        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.AQUA))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.AQUA))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_SHEET).assertIsDisplayed()
         composeRule.onNode(hasText(string(R.string.note_editor_toolbar_color)) and inColorSheet).assertIsDisplayed()
@@ -410,7 +545,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_picker_color_when_displayed_then_options_follow_palette_order_in_two_rows_of_four() {
-        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.AQUA))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.AQUA))
 
         val bounds = NoteColor.entries.map { colorOption(it).getUnclippedBoundsInRoot() }
 
@@ -424,7 +559,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_picker_color_when_displayed_then_only_that_option_is_selected() {
-        setContent(NoteEditorUiState(title = "Ideas", color = NoteColor.AQUA, pickerColor = NoteColor.LAVENDER))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), color = NoteColor.AQUA, pickerColor = NoteColor.LAVENDER))
 
         colorOption(NoteColor.LAVENDER).assertIsSelected()
         NoteColor.entries.filter { it != NoteColor.LAVENDER }.forEach { color ->
@@ -434,7 +569,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_picker_color_none_when_displayed_then_none_option_is_selected() {
-        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.NONE))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.NONE))
 
         colorOption(NoteColor.NONE).assertIsSelected()
         colorOption(NoteColor.AQUA).assertIsNotSelected()
@@ -442,7 +577,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_color_sheet_when_option_clicked_then_sends_picker_color_selected() {
-        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.AQUA))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.AQUA))
 
         colorOption(NoteColor.ROSE).performClick()
         colorOption(NoteColor.NONE).performClick()
@@ -458,7 +593,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_note_with_title_when_sheet_displayed_then_preview_shows_title_and_color_caption() {
-        setContent(NoteEditorUiState(title = "Reunión de equipo", pickerColor = NoteColor.PEACH))
+        setContent(NoteEditorUiState(title = TextFieldValue("Reunión de equipo"), pickerColor = NoteColor.PEACH))
 
         composeRule.onNode(hasText("Reunión de equipo") and inColorPreview).assertIsDisplayed()
         composeRule.onNode(hasText(string(R.string.note_color_preview_untitled)) and inColorPreview).assertDoesNotExist()
@@ -469,7 +604,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_note_without_title_when_sheet_displayed_then_preview_shows_untitled_and_color_caption() {
-        setContent(NoteEditorUiState(title = "", pickerColor = NoteColor.NONE))
+        setContent(NoteEditorUiState(title = TextFieldValue(""), pickerColor = NoteColor.NONE))
 
         composeRule.onNode(hasText(string(R.string.note_color_preview_untitled)) and inColorPreview).assertIsDisplayed()
         composeRule.onNode(
@@ -479,7 +614,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_color_sheet_when_apply_clicked_then_sends_color_applied_after_closing() {
-        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.MINT))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.MINT))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_APPLY)
             .assertTextEquals(string(R.string.note_color_apply))
@@ -492,7 +627,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_color_sheet_when_close_clicked_then_sends_color_picker_dismissed_after_closing() {
-        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.MINT))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.MINT))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_CLOSE).performClick()
         composeRule.waitUntil(timeoutMillis = SHEET_TIMEOUT_MS) { userIntents.isNotEmpty() }
@@ -503,7 +638,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_color_sheet_when_displayed_then_options_and_close_have_accessible_labels() {
-        setContent(NoteEditorUiState(title = "Ideas", pickerColor = NoteColor.AQUA))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.AQUA))
 
         colorLabels.forEach { (color, labelRes) ->
             colorOption(color)
@@ -518,7 +653,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_content_focused_when_checklist_button_clicked_then_sends_checklist_button_clicked() {
-        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = true))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isContentFocused = true))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_CHECKLIST)
             .assertContentDescriptionEquals(string(R.string.note_editor_toolbar_checklist))
@@ -530,7 +665,7 @@ class NoteEditorScreenTest {
 
     @Test
     fun given_content_not_focused_when_checklist_button_clicked_then_is_disabled_and_sends_nothing() {
-        setContent(NoteEditorUiState(title = "Ideas", isContentFocused = false))
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isContentFocused = false))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_CHECKLIST).assertIsNotEnabled().performClick()
 
@@ -557,7 +692,7 @@ class NoteEditorScreenTest {
     fun given_empty_task_when_displayed_then_checkbox_is_labelled_as_empty_task() {
         setContent(
             NoteEditorUiState(
-                title = "Compra",
+                title = TextFieldValue("Compra"),
                 content = TextFieldValue("Tomates\n"),
                 contentTasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = false)),
             ),
@@ -589,7 +724,7 @@ class NoteEditorScreenTest {
     }
 
     private val checklistState = NoteEditorUiState(
-        title = "Compra",
+        title = TextFieldValue("Compra"),
         content = TextFieldValue("Tomates\nPan"),
         contentTasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true)),
     )
