@@ -71,7 +71,7 @@ Cada pantalla vive en su propio paquete (`notes/list`, `notes/detail`, ...) con:
 **Reglas:**
 
 - Los ViewModels solo dependen de **casos de uso**, nunca de repositorios ni DAOs.
-  - **Excepción:** los `object` de reglas puras y sin estado de `:domain` (`NoteFormatting`, `NoteChecklist`) se usan directamente desde el ViewModel; todo lo que toque repositorios va por caso de uso.
+  - **Excepción:** los `object` de reglas puras y sin estado de `:domain` (`NoteFormatting`, `NoteChecklist`, `NoteUndo`) se usan directamente desde el ViewModel; todo lo que toque repositorios va por caso de uso.
 - El estado se actualiza con `_state.update { it.copy(...) }`.
 - Sin lógica de negocio en composables.
 - Agrega `testTag` a los elementos con los que interactúan las pruebas de UI.

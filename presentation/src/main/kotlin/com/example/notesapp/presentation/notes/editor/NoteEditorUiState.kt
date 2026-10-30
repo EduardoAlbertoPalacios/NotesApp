@@ -3,6 +3,7 @@ package com.example.notesapp.presentation.notes.editor
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.input.TextFieldValue
 import com.example.notesapp.domain.notes.ChecklistItem
+import com.example.notesapp.domain.notes.EditField
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
@@ -15,7 +16,8 @@ data class NoteEditorUiState(
     /** Nota que todavía no existe: el título recibe el foco al abrir el editor. */
     val isNewNote: Boolean = true,
     val isLoading: Boolean = false,
-    val title: String = "",
+    /** Título con su selección: deshacer restaura también el cursor del título. */
+    val title: TextFieldValue = TextFieldValue(),
     /** Contenido con su selección: el formato se aplica sobre lo seleccionado o en la posición del cursor. */
     val content: TextFieldValue = TextFieldValue(),
     val contentSpans: List<FormatSpan> = emptyList(),
@@ -37,10 +39,20 @@ data class NoteEditorUiState(
     val saveStatus: SaveStatus = SaveStatus.Idle,
     val loadError: LoadError? = null,
     val isDeleteDialogVisible: Boolean = false,
+    /** Hay algún paso que deshacer: el botón «Deshacer» se habilita. */
+    val canUndo: Boolean = false,
+    /** Campo que debe recibir el foco tras deshacer; nulo si no hay ninguna petición o ya se atendió. */
+    val focusRequest: FocusRequest? = null,
 ) {
     /** La nota ya cargó sin error: solo entonces se pinta su color y se muestran sus acciones. */
     val isNoteVisible: Boolean get() = !isLoading && loadError == null
 }
+
+/**
+ * Petición de foco en [field]. [id] cambia en cada petición, para que dos seguidas al mismo campo
+ * vuelvan a dispararse.
+ */
+data class FocusRequest(val field: EditField, val id: Long)
 
 enum class SaveStatus { Idle, Saving, Saved }
 

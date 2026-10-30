@@ -7,7 +7,8 @@ import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.TextFormat
 
 sealed interface NoteEditorIntent {
-    data class TitleChanged(val title: String) : NoteEditorIntent
+    /** Cambio de texto o solo de selección del título. */
+    data class TitleChanged(val title: TextFieldValue) : NoteEditorIntent
     /** Cambio de texto o solo de selección. */
     data class ContentChanged(val content: TextFieldValue) : NoteEditorIntent
     data object PinClicked : NoteEditorIntent
@@ -32,6 +33,10 @@ sealed interface NoteEditorIntent {
     data object DeleteConfirmed : NoteEditorIntent
     data object DeleteDismissed : NoteEditorIntent
     data object BackClicked : NoteEditorIntent
+    /** Deshace el último paso de edición del título o del contenido. */
+    data object UndoClicked : NoteEditorIntent
+    /** La pantalla ya movió el foco pedido por la petición [id]: no debe repetirse, por ejemplo al girar. */
+    data class FocusRequestHandled(val id: Long) : NoteEditorIntent
     data object AddImageClicked : NoteEditorIntent
     /** Uris elegidas en el selector de fotos; vacía si el usuario lo cerró sin elegir. */
     data class ImagesPicked(val uris: List<String>) : NoteEditorIntent
