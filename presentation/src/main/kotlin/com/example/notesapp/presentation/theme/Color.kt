@@ -21,6 +21,17 @@ internal val Peach = Color(0xFFF5C4A5)
 internal val Swatch = Color(0xFF262628)
 internal val SwatchBorder = Color(0xFF323234)
 
+// Tema claro.
+internal val Mist = Color(0xFFFAFBFC)
+internal val Frost = Color(0xFFEEF1F3)
+internal val Haze = Color(0xFFDCE2E5)
+internal val Charcoal = Color(0xFF202629)
+internal val Steel = Color(0xFF626C71)
+internal val DeepTeal = Color(0xFF17646D)
+
+/** Opacidad de las opciones deshabilitadas. */
+internal const val DisabledAlpha = 0.38f
+
 /** Colores de las tarjetas de nota, que no encajan en los roles de Material. */
 @Immutable
 data class NoteColors(
@@ -38,4 +49,26 @@ data class NoteColors(
     /** Muestra de «Sin color» en el selector. */
     val swatch: Color = Swatch,
     val swatchBorder: Color = SwatchBorder,
+    /** Borde de la muestra elegida en el selector. */
+    val swatchSelectedBorder: Color = Snow,
 )
+
+internal val LightNoteColors = NoteColors(
+    none = Frost,
+    swatch = Frost,
+    swatchBorder = Haze,
+    swatchSelectedBorder = DeepTeal,
+)
+
+/**
+ * Colores de acento para textos e íconos. `primary` se usa como relleno y es Aqua en ambos temas,
+ * pero Aqua no se lee sobre el fondo claro.
+ */
+@Immutable
+data class AccentColors(
+    val content: Color = Aqua,
+    /** Valor de la fila activa de Ajustes. */
+    val settingsValue: Color = Ash,
+)
+
+internal val LightAccentColors = AccentColors(content = DeepTeal, settingsValue = DeepTeal)

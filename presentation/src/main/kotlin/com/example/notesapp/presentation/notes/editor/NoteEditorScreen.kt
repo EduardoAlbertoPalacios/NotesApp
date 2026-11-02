@@ -27,6 +27,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
@@ -150,7 +151,7 @@ fun NoteEditorScreen(
                     else -> {
                         NoteContent(state = state, onIntent = onIntent, modifier = Modifier.weight(1f))
                         SaveStatusRow(status = state.saveStatus)
-                        // La barra flota sobre el color de la nota con el tema oscuro de la app.
+                        // La barra flota sobre el color de la nota con el tema de la app.
                         AppColorsTheme {
                             EditorToolbar(state = state, onIntent = onIntent)
                         }
@@ -252,7 +253,7 @@ private fun EditorIconButton(
         onClick = onClick,
         modifier = modifier.size(NotesTheme.sizes.iconAction),
         colors = IconButtonDefaults.iconButtonColors(
-            contentColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+            contentColor = if (isActive) NotesTheme.accent.content else MaterialTheme.colorScheme.onBackground,
         ),
     ) {
         Icon(painter = painterResource(iconRes), contentDescription = contentDescription)
@@ -521,7 +522,7 @@ private fun EditorTextField(
         modifier = modifier.editorField(placeholder),
         textStyle = textStyle.copy(color = colors.onBackground),
         keyboardOptions = EditorKeyboardOptions,
-        cursorBrush = SolidColor(colors.primary),
+        cursorBrush = SolidColor(NotesTheme.accent.content),
         decorationBox = { innerTextField ->
             EditorFieldDecoration(isEmpty = showPlaceholder, placeholder, textStyle, innerTextField)
         },
@@ -583,7 +584,7 @@ private fun NoteImageItem(
                 .testTag(NoteEditorTestTags.IMAGE + image.id),
             contentScale = ContentScale.FillWidth,
         )
-        // Va sobre la imagen, no sobre el color de la nota: conserva el tema oscuro de la app.
+        // Va sobre la imagen, no sobre el color de la nota: conserva el tema de la app.
         AppColorsTheme {
             FilledIconButton(
                 onClick = onRemove,
@@ -805,13 +806,19 @@ private fun DeleteNoteDialog(
     AlertDialog(
         onDismissRequest = { onIntent(NoteEditorIntent.DeleteDismissed) },
         confirmButton = {
-            TextButton(onClick = { onIntent(NoteEditorIntent.DeleteConfirmed) }) {
+            TextButton(
+                onClick = { onIntent(NoteEditorIntent.DeleteConfirmed) },
+                colors = ButtonDefaults.textButtonColors(contentColor = NotesTheme.accent.content),
+            ) {
                 Text(text = stringResource(R.string.note_editor_delete_confirm))
             }
         },
         modifier = modifier,
         dismissButton = {
-            TextButton(onClick = { onIntent(NoteEditorIntent.DeleteDismissed) }) {
+            TextButton(
+                onClick = { onIntent(NoteEditorIntent.DeleteDismissed) },
+                colors = ButtonDefaults.textButtonColors(contentColor = NotesTheme.accent.content),
+            ) {
                 Text(text = stringResource(R.string.note_editor_delete_cancel))
             }
         },
@@ -826,7 +833,7 @@ private fun LoadingState(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(
             modifier = Modifier.testTag(NoteEditorTestTags.LOADING),
-            color = MaterialTheme.colorScheme.primary,
+            color = NotesTheme.accent.content,
         )
     }
 }
@@ -937,6 +944,22 @@ private fun NoteEditorScreenChecklistPreview() {
             ),
             onIntent = {},
         )
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteEditorScreenNoColorLightPreview() {
+    NotesAppTheme(darkTheme = false) {
+        NoteEditorScreen(state = ColorPreviewState.copy(color = NoteColor.NONE), onIntent = {})
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteEditorScreenAquaLightPreview() {
+    NotesAppTheme(darkTheme = false) {
+        NoteEditorScreen(state = ColorPreviewState.copy(color = NoteColor.AQUA), onIntent = {})
     }
 }
 

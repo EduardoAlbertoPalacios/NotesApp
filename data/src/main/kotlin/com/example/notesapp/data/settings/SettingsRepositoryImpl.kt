@@ -1,0 +1,55 @@
+package com.example.notesapp.data.settings
+
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.domain.settings.SettingsError
+import com.example.notesapp.domain.settings.SettingsRepository
+import com.example.notesapp.domain.settings.ThemeMode
+import java.io.IOException
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+
+/** Singleton porque [chosenThemeMode] debe ser el mismo para toda la sesión. */
+@Singleton
+internal class SettingsRepositoryImpl @Inject constructor(
+    private val dataStore: DataStore<Preferences>,
+) : SettingsRepository {
+
+    /**
+     * Último tema elegido en esta sesión; tiene prioridad sobre lo leído. Así se aplica hasta cerrar la app
+     * aunque no se pueda guardar, y también si una lectura fallida ya terminó de observar el archivo.
+     */
+    private val chosenThemeMode = MutableStateFlow<ThemeMode?>(null)
+
+    override fun observeThemeMode(): Flow<ThemeMode?> =
+        combine(storedThemeMode(), chosenThemeMode) { stored, chosen -> chosen ?: stored }
+            .distinctUntilChanged()
+
+    override suspend fun setThemeMode(mode: ThemeMode): AppResult<Unit, SettingsError> {
+        chosenThemeMode.value = mode
+        return try {
+            dataStore.edit { it[THEME_MODE] = mode.toStorageValue() }
+            AppResult.Success(Unit)
+        } catch (_: IOException) {
+            AppResult.Error(SettingsError.Storage)
+        }
+    }
+
+    private fun storedThemeMode(): Flow<ThemeMode?> =
+        dataStore.data
+            .map { it[THEME_MODE].toThemeModeOrNull() }
+            .catch { error -> if (error is IOException) emit(null) else throw error }
+
+    private companion object {
+        val THEME_MODE = stringPreferencesKey("theme_mode")
+    }
+}

@@ -24,7 +24,7 @@ internal fun NoteColor.toContainerColor(): Color {
     }
 }
 
-/** Color del texto principal sobre la nota: oscuro sobre un color, claro sobre «Sin color». */
+/** Color del texto principal sobre la nota: oscuro sobre un color; sobre «Sin color», el del tema. */
 @Composable
 internal fun NoteColor.toContentColor(): Color =
     if (this == NoteColor.NONE) MaterialTheme.colorScheme.onBackground else NotesTheme.noteColors.content

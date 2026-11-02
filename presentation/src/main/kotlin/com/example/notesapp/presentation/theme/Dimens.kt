@@ -55,6 +55,16 @@ data class Sizes(
     /** Casilla de tarea en la tarjeta de Mis notas, más pequeña que la del editor. */
     val cardTaskCheckbox: Dp = 13.dp,
     val cardTaskGap: Dp = 6.dp,
+    val settingsBackIcon: Dp = 22.dp,
+    val settingsRow: Dp = 68.dp,
+    val settingsRowIcon: Dp = 21.dp,
+    val settingsChevron: Dp = 16.dp,
+    val settingsNoticeIcon: Dp = 24.dp,
+    val settingsSwitchWidth: Dp = 42.dp,
+    val settingsSwitchHeight: Dp = 26.dp,
+    val settingsSwitchThumb: Dp = 20.dp,
+    val themeOption: Dp = 56.dp,
+    val themeOptionCheck: Dp = 22.dp,
 )
 
 @Immutable
@@ -67,4 +77,5 @@ data class Radii(
     val sheetHandle: Dp = 2.dp,
     val taskCheckbox: Dp = 5.dp,
     val cardTaskCheckbox: Dp = 3.dp,
+    val settingsNoticeIcon: Dp = 14.dp,
 )

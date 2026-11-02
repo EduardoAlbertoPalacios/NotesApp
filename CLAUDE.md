@@ -20,7 +20,7 @@
 | **Lenguaje** | Kotlin, corrutinas y Flow |
 | **UI** | Jetpack Compose (Material 3) + Navigation Compose |
 | **Inyección de dependencias** | Hilt |
-| **Persistencia** | Room |
+| **Persistencia** | Room (notas) y DataStore Preferences (ajustes) |
 | **Build** | Gradle con Kotlin DSL y version catalog (`gradle/libs.versions.toml`) |
 
 > **Importante:** todas las versiones viven en el version catalog. No escribas versiones directamente en los `build.gradle.kts`.
@@ -34,18 +34,20 @@
 | `:app` | Android application | `Application` con `@HiltAndroidApp`, `MainActivity`, grafo de navegación raíz |
 | `:presentation` | Android library | Pantallas Compose, ViewModels, estado de UI, tema, navegación |
 | `:domain` | Kotlin/JVM puro | Modelos, interfaces de repositorio, casos de uso |
-| `:data` | Android library | Room (entidades, DAOs, base de datos), implementaciones de repositorio, mappers, módulos Hilt |
+| `:data` | Android library | Room (entidades, DAOs, base de datos), DataStore, implementaciones de repositorio, mappers, módulos Hilt |
 | `:common` | Kotlin/JVM puro | Utilidades compartidas: `Result`/errores, dispatchers, extensiones |
 
 ### Regla de dependencias
 
 ```text
 app ──> presentation ──> domain ──> common
- └────> data ──────────> domain
+ ├────> data ──────────> domain
+ └────> domain
 ```
 
 - **`:domain`** no depende de Android, Room, Compose ni Hilt (solo `javax.inject` para `@Inject`).
 - **`:presentation`** y **`:data`** no se conocen entre sí. `:app` los une para que Hilt arme el grafo.
+- **`:app`** usa de `:domain` solo modelos que necesita la actividad (`ThemeMode`), nunca repositorios.
 - **`:common`** no depende de ningún otro módulo.
 - **Nunca** expongas entidades de Room fuera de `:data`; se mapean a modelos de dominio.
 
@@ -88,7 +90,7 @@ Cada pantalla vive en su propio paquete (`notes/list`, `notes/detail`, ...) con:
 - `NoteEntity`, `NoteDao`, `NotesDatabase` en el paquete `local`.
 - `NoteRepositoryImpl` implementa la interfaz de dominio y es `internal`.
 - **Mappers** como funciones de extensión: `NoteEntity.toDomain()`, `Note.toEntity()`.
-- **Módulos Hilt:** `DatabaseModule` (`@Provides`) y `RepositoryModule` (`@Binds`), instalados en `SingletonComponent`.
+- **Módulos Hilt:** `DatabaseModule` y `PreferencesModule` (`@Provides`) y `RepositoryModule` (`@Binds`), instalados en `SingletonComponent`.
 - Exporta el esquema de Room (`exportSchema = true`) y escribe una `Migration` en cada cambio de versión.
 
 > **Nota:** `fallbackToDestructiveMigration` está prohibido (ver `docs/constitution.md`).

@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.NotesApp" parent="android:Theme.Material.NoActionBar" />
+    <style name="Base.Theme.NotesApp" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+
+    <!-- Antes de API 31 el sistema no conoce el tema elegido: sin ventana inicial no hay destello. -->
+    <style name="Theme.NotesApp" parent="Base.Theme.NotesApp">
+        <item name="android:windowDisablePreview">true</item>
+    </style>
 </resources>

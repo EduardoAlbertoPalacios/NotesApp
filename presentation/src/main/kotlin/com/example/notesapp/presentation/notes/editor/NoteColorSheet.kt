@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.common.SheetHandle
 import com.example.notesapp.presentation.notes.common.labelRes
 import com.example.notesapp.presentation.notes.common.toContainerColor
 import com.example.notesapp.presentation.notes.common.toContentColor
@@ -70,7 +71,7 @@ internal fun NoteColorSheet(
         modifier = modifier.testTag(NoteEditorTestTags.COLOR_SHEET),
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = NotesTheme.radii.pill, topEnd = NotesTheme.radii.pill),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onBackground,
         dragHandle = { SheetHandle() },
     ) {
@@ -82,16 +83,6 @@ internal fun NoteColorSheet(
             onApply = { hideThen(NoteEditorIntent.ColorApplied) },
         )
     }
-}
-
-@Composable
-private fun SheetHandle(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .padding(top = NotesTheme.spacing.sm, bottom = NotesTheme.spacing.sheetSection)
-            .size(width = NotesTheme.sizes.sheetHandleWidth, height = NotesTheme.sizes.sheetHandleHeight)
-            .background(MaterialTheme.colorScheme.onSurfaceVariant, RoundedCornerShape(NotesTheme.radii.sheetHandle)),
-    )
 }
 
 @Composable
@@ -220,7 +211,7 @@ private fun ColorOption(
                 .background(if (color == NoteColor.NONE) noteColors.swatch else color.toContainerColor())
                 .border(
                     width = if (isSelected) sizes.colorSwatchSelectedBorder else sizes.border,
-                    color = if (isSelected) colors.onBackground else noteColors.swatchBorder,
+                    color = if (isSelected) noteColors.swatchSelectedBorder else noteColors.swatchBorder,
                     shape = CircleShape,
                 ),
             contentAlignment = Alignment.Center,
@@ -243,7 +234,7 @@ private fun ColorOption(
         Text(
             text = stringResource(color.labelRes()),
             style = if (isSelected) NotesTheme.typography.colorLabelSelected else NotesTheme.typography.colorLabel,
-            color = if (isSelected) colors.primary else colors.onSurfaceVariant,
+            color = if (isSelected) NotesTheme.accent.content else colors.onSurfaceVariant,
             maxLines = 1,
         )
     }
@@ -286,7 +277,24 @@ private const val PALETTE_COLUMNS = 4
 @Composable
 private fun NoteColorSheetContentPreview() {
     NotesAppTheme {
-        Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+            SheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
+            NoteColorSheetContent(
+                noteTitle = "Reunión de equipo",
+                pickerColor = NoteColor.AQUA,
+                onColorSelected = {},
+                onClose = {},
+                onApply = {},
+            )
+        }
+    }
+}
+
+@Preview(widthDp = 412)
+@Composable
+private fun NoteColorSheetContentLightPreview() {
+    NotesAppTheme(darkTheme = false) {
+        Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
             SheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
             NoteColorSheetContent(
                 noteTitle = "Reunión de equipo",
@@ -303,7 +311,7 @@ private fun NoteColorSheetContentPreview() {
 @Composable
 private fun NoteColorSheetContentNoColorPreview() {
     NotesAppTheme {
-        Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
             SheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
             NoteColorSheetContent(
                 noteTitle = "",
