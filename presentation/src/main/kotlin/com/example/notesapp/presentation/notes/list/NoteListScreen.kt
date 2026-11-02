@@ -267,7 +267,7 @@ private fun SearchField(
         textStyle = textStyle.copy(color = colors.onBackground),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
-        cursorBrush = SolidColor(colors.primary),
+        cursorBrush = SolidColor(NotesTheme.accent.content),
         decorationBox = { innerTextField ->
             Row(
                 modifier = Modifier
@@ -571,7 +571,7 @@ private fun LoadingState(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .testTag(NoteListTestTags.LOADING)
                 .semantics { contentDescription = description },
-            color = MaterialTheme.colorScheme.primary,
+            color = NotesTheme.accent.content,
         )
     }
 }
@@ -691,6 +691,14 @@ private val previewNotes = listOf(
 @Composable
 private fun NoteListScreenContentPreview() {
     NotesAppTheme {
+        NoteListScreen(state = NoteListUiState(isLoading = false, notes = previewNotes), onIntent = {})
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteListScreenLightPreview() {
+    NotesAppTheme(darkTheme = false) {
         NoteListScreen(state = NoteListUiState(isLoading = false, notes = previewNotes), onIntent = {})
     }
 }

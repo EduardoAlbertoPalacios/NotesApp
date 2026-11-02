@@ -12,9 +12,11 @@ import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.presentation.notes.editor.NoteEditorRoute
 import com.example.notesapp.presentation.notes.editor.NoteEditorViewModel
 import com.example.notesapp.presentation.notes.list.NoteListRoute
+import com.example.notesapp.presentation.settings.SettingsRoute
 
 private object NotesDestinations {
     const val NOTE_LIST = "notes"
+    const val SETTINGS = "settings"
     const val NOTE_EDITOR = "notes/editor?" +
         "${NoteEditorViewModel.NOTE_ID_ARG}={${NoteEditorViewModel.NOTE_ID_ARG}}&" +
         "${NoteEditorViewModel.CATEGORY_ARG}={${NoteEditorViewModel.CATEGORY_ARG}}"
@@ -26,7 +28,7 @@ private object NotesDestinations {
 }
 
 @Composable
-fun NotesNavHost(modifier: Modifier = Modifier) {
+fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     NavHost(
         navController = navController,
@@ -38,8 +40,7 @@ fun NotesNavHost(modifier: Modifier = Modifier) {
                 onNavigateToNote = { noteId, category ->
                     navController.navigate(NotesDestinations.noteEditor(noteId, category))
                 },
-                // Ajustes aún no existe; se conecta cuando se implemente.
-                onNavigateToSettings = {},
+                onNavigateToSettings = { navController.navigate(NotesDestinations.SETTINGS) },
             )
         }
         composable(
@@ -57,6 +58,9 @@ fun NotesNavHost(modifier: Modifier = Modifier) {
             ),
         ) {
             NoteEditorRoute(onNavigateBack = { navController.popBackStack() })
+        }
+        composable(NotesDestinations.SETTINGS) {
+            SettingsRoute(appVersion = appVersion, onNavigateBack = { navController.popBackStack() })
         }
     }
 }

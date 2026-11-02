@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assertContentDescriptionEquals
@@ -28,11 +29,13 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -41,12 +44,18 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.EditField
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.ThemeTestColors
+import com.example.notesapp.presentation.assertColorEquals
+import com.example.notesapp.presentation.containsColor
+import com.example.notesapp.presentation.dominantColor
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
+import com.example.notesapp.presentation.textColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -723,6 +732,170 @@ class NoteEditorScreenTest {
         }
     }
 
+    private fun setThemedContent(darkTheme: Boolean, state: NoteEditorUiState) {
+        composeRule.setContent {
+            NotesAppTheme(darkTheme = darkTheme) {
+                NoteEditorScreen(state = state, onIntent = {})
+            }
+        }
+    }
+
+    private fun assertEditorBackgrounds(darkTheme: Boolean) {
+        var color by mutableStateOf(NoteColor.AQUA)
+        composeRule.setContent {
+            NotesAppTheme(darkTheme = darkTheme) {
+                NoteEditorScreen(state = coloredState(color), onIntent = {})
+            }
+        }
+
+        ThemeTestColors.NoteContainers.forEach { (noteColor, expected) ->
+            color = noteColor
+            composeRule.waitForIdle()
+
+            assertColorEquals("Editor $noteColor", expected, composeRule.onRoot().captureToImage().dominantColor())
+        }
+    }
+
+    private fun coloredState(color: NoteColor, isPinned: Boolean = false) = NoteEditorUiState(
+        title = TextFieldValue("Ideas"),
+        content = TextFieldValue("Libreta"),
+        color = color,
+        isPinned = isPinned,
+    )
+
+    private fun fieldColor(tag: String): Color = composeRule.onNodeWithTag(tag).textColor()
+
+    private fun colorOptionLabel(color: NoteColor) = composeRule.onNode(
+        hasText(string(colorLabels.getValue(color))) and hasAnyAncestor(hasTestTag(NoteEditorTestTags.COLOR_OPTION + color.name)),
+        useUnmergedTree = true,
+    )
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_and_note_color_when_displayed_then_editor_background_is_that_color() {
+        assertEditorBackgrounds(darkTheme = false)
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_dark_theme_and_note_color_when_displayed_then_editor_background_is_that_color() {
+        assertEditorBackgrounds(darkTheme = true)
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_and_no_color_when_displayed_then_editor_background_is_light() {
+        setThemedContent(darkTheme = false, coloredState(NoteColor.NONE))
+
+        assertColorEquals(
+            "Fondo del editor",
+            ThemeTestColors.LightBackground,
+            composeRule.onRoot().captureToImage().dominantColor(),
+        )
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_dark_theme_and_no_color_when_displayed_then_editor_background_is_dark() {
+        setThemedContent(darkTheme = true, coloredState(NoteColor.NONE))
+
+        assertColorEquals(
+            "Fondo del editor",
+            ThemeTestColors.DarkBackground,
+            composeRule.onRoot().captureToImage().dominantColor(),
+        )
+    }
+
+    @Test
+    fun given_light_theme_and_no_color_when_displayed_then_editor_texts_are_dark() {
+        setThemedContent(darkTheme = false, coloredState(NoteColor.NONE))
+
+        assertColorEquals("Título", ThemeTestColors.LightText, fieldColor(NoteEditorTestTags.TITLE))
+        assertColorEquals("Contenido", ThemeTestColors.LightText, fieldColor(NoteEditorTestTags.CONTENT))
+    }
+
+    @Test
+    fun given_light_theme_and_note_color_when_displayed_then_editor_texts_use_note_text_color() {
+        setThemedContent(darkTheme = false, coloredState(NoteColor.AQUA))
+
+        assertColorEquals("Título", ThemeTestColors.NoteText, fieldColor(NoteEditorTestTags.TITLE))
+        assertColorEquals("Contenido", ThemeTestColors.NoteText, fieldColor(NoteEditorTestTags.CONTENT))
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_and_note_color_when_displayed_then_toolbar_keeps_app_surface() {
+        setThemedContent(darkTheme = false, coloredState(NoteColor.ROSE))
+
+        assertColorEquals(
+            "Barra de edición",
+            ThemeTestColors.LightSurface,
+            composeRule.onNodeWithTag(NoteEditorTestTags.TOOLBAR_IMAGE).captureToImage().dominantColor(),
+        )
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_and_pinned_note_without_color_when_displayed_then_pin_uses_light_accent() {
+        setThemedContent(darkTheme = false, coloredState(NoteColor.NONE, isPinned = true))
+
+        val pin = composeRule.onNodeWithTag(NoteEditorTestTags.PIN).captureToImage()
+
+        assertTrue(pin.containsColor(ThemeTestColors.LightAccent))
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_and_pinned_colored_note_when_displayed_then_pin_uses_note_text_color() {
+        setThemedContent(darkTheme = false, coloredState(NoteColor.MINT, isPinned = true))
+
+        val pin = composeRule.onNodeWithTag(NoteEditorTestTags.PIN).captureToImage()
+
+        assertTrue(pin.containsColor(ThemeTestColors.NoteText))
+    }
+
+    @Test
+    fun given_light_theme_and_color_sheet_when_displayed_then_selected_label_uses_accent_and_others_secondary() {
+        setThemedContent(
+            darkTheme = false,
+            NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.LAVENDER),
+        )
+
+        assertColorEquals("Elegida", ThemeTestColors.LightAccent, colorOptionLabel(NoteColor.LAVENDER).textColor())
+        assertColorEquals("Otra", ThemeTestColors.LightSecondaryText, colorOptionLabel(NoteColor.ROSE).textColor())
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_and_color_sheet_when_displayed_then_each_swatch_shows_its_color() {
+        setThemedContent(
+            darkTheme = false,
+            NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.NONE),
+        )
+
+        (ThemeTestColors.NoteContainers + (NoteColor.NONE to ThemeTestColors.LightSurface)).forEach { (color, expected) ->
+            assertTrue(
+                "Muestra $color",
+                colorOption(color).captureToImage().containsColor(expected),
+            )
+        }
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_and_color_sheet_when_displayed_then_sheet_background_is_white() {
+        setThemedContent(
+            darkTheme = false,
+            NoteEditorUiState(title = TextFieldValue("Ideas"), pickerColor = NoteColor.NONE),
+        )
+
+        assertColorEquals(
+            "Fondo de la hoja",
+            ThemeTestColors.LightSheet,
+            composeRule.onNodeWithTag(NoteEditorTestTags.COLOR_SHEET).captureToImage().dominantColor(),
+        )
+    }
+
     private val checklistState = NoteEditorUiState(
         title = TextFieldValue("Compra"),
         content = TextFieldValue("Tomates\nPan"),
@@ -762,6 +935,7 @@ class NoteEditorScreenTest {
 
     private companion object {
         const val SHEET_TIMEOUT_MS = 5_000L
+        const val CAPTURE_MIN_SDK = 26
         val MIN_TOUCH_TARGET = 44.dp
     }
 }

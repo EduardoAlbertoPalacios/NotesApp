@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
@@ -19,23 +20,30 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.ThemeTestColors
+import com.example.notesapp.presentation.assertColorEquals
+import com.example.notesapp.presentation.dominantColor
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.buildCardContent
 import com.example.notesapp.presentation.notes.common.buildFormattedContent
+import com.example.notesapp.presentation.textColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -361,6 +369,90 @@ class NoteListScreenTest {
         assertEquals(listOf<NoteListIntent>(NoteListIntent.NoteClicked(checklistNote.id)), intents)
     }
 
+    /** Una sola nota a la vez: con los ocho colores, parte de la cuadrícula quedaría fuera de la pantalla. */
+    private fun assertCardColors(darkTheme: Boolean, noneColor: Color) {
+        var color by mutableStateOf(NoteColor.NONE)
+        composeRule.setContent {
+            NotesAppTheme(darkTheme = darkTheme) {
+                NoteListScreen(
+                    state = NoteListUiState(isLoading = false, notes = listOf(note.copy(color = color))),
+                    onIntent = {},
+                )
+            }
+        }
+
+        (ThemeTestColors.NoteContainers + (NoteColor.NONE to noneColor)).forEach { (noteColor, expected) ->
+            color = noteColor
+            composeRule.waitForIdle()
+
+            assertColorEquals(
+                "Tarjeta $noteColor",
+                expected,
+                composeRule.onNodeWithTag(NoteListTestTags.NOTE_CARD + note.id).captureToImage().dominantColor(),
+            )
+        }
+    }
+
+    private fun setLightContent(card: NoteItemUi) {
+        composeRule.setContent {
+            NotesAppTheme(darkTheme = false) {
+                NoteListScreen(state = NoteListUiState(isLoading = false, notes = listOf(card)), onIntent = {})
+            }
+        }
+    }
+
+    private fun cardText(text: String) = composeRule.onNodeWithText(text, useUnmergedTree = true)
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_when_displayed_then_each_card_is_painted_with_its_color() {
+        assertCardColors(darkTheme = false, noneColor = ThemeTestColors.LightSurface)
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_dark_theme_when_displayed_then_each_card_is_painted_with_its_color() {
+        assertCardColors(darkTheme = true, noneColor = ThemeTestColors.DarkSurface)
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_light_theme_when_displayed_then_screen_background_is_light() {
+        setLightContent(note)
+
+        assertColorEquals(
+            "Fondo de Mis notas",
+            ThemeTestColors.LightBackground,
+            composeRule.onRoot().captureToImage().dominantColor(),
+        )
+    }
+
+    @Test
+    fun given_light_theme_and_note_without_color_when_displayed_then_card_texts_are_dark() {
+        setLightContent(note.copy(color = NoteColor.NONE))
+
+        assertColorEquals("Título", ThemeTestColors.LightText, cardText(note.title).textColor())
+        assertColorEquals("Contenido", ThemeTestColors.LightText, cardText(note.content.text).textColor())
+        assertColorEquals(
+            "Fecha",
+            ThemeTestColors.LightSecondaryText,
+            cardText(string(R.string.note_date_yesterday)).textColor(),
+        )
+    }
+
+    @Test
+    fun given_light_theme_and_colored_note_when_displayed_then_card_texts_use_note_colors() {
+        setLightContent(note.copy(color = NoteColor.ROSE))
+
+        assertColorEquals("Título", ThemeTestColors.NoteText, cardText(note.title).textColor())
+        assertColorEquals("Contenido", ThemeTestColors.NoteText, cardText(note.content.text).textColor())
+        assertColorEquals(
+            "Fecha",
+            ThemeTestColors.NoteMetadata,
+            cardText(string(R.string.note_date_yesterday)).textColor(),
+        )
+    }
+
     private val checklistNote
         get() = note.copy(
             id = 7,
@@ -401,5 +493,6 @@ class NoteListScreenTest {
     private companion object {
         const val TOTAL_COUNT = 3
         const val CONTENT_MAX_LINES = 8
+        const val CAPTURE_MIN_SDK = 26
     }
 }

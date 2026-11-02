@@ -59,7 +59,7 @@ fun NoteEditorRoute(
     DisposableEffect(window, useDarkStatusBarIcons) {
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         val previous = controller?.isAppearanceLightStatusBars
-        controller?.isAppearanceLightStatusBars = useDarkStatusBarIcons
+        if (useDarkStatusBarIcons) controller?.isAppearanceLightStatusBars = true
         onDispose {
             if (controller != null && previous != null) controller.isAppearanceLightStatusBars = previous
         }

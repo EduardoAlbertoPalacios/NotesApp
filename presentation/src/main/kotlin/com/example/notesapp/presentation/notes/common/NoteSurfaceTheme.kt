@@ -8,11 +8,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.presentation.theme.AccentColors
+import com.example.notesapp.presentation.theme.LocalAccentColors
 
 /**
  * Tema para lo que se pinta sobre el color de la nota: fondo del color y textos e íconos oscuros.
  * Las superficies (tarjetas de categoría) pasan a un tinte translúcido del texto para seguir legibles.
- * Con [NoteColor.NONE] no cambia nada, así que el contenido conserva el tema oscuro de la app.
+ * Con [NoteColor.NONE] no cambia nada, así que el contenido conserva el tema de la app.
  */
 @Composable
 internal fun NoteSurfaceTheme(color: NoteColor, content: @Composable () -> Unit) {
@@ -20,7 +22,7 @@ internal fun NoteSurfaceTheme(color: NoteColor, content: @Composable () -> Unit)
         content()
         return
     }
-    val appColors = AppColors(MaterialTheme.colorScheme, LocalContentColor.current)
+    val appColors = AppColors(MaterialTheme.colorScheme, LocalContentColor.current, LocalAccentColors.current)
     val container = color.toContainerColor()
     val onContainer = color.toContentColor()
     val colorScheme = MaterialTheme.colorScheme.copy(
@@ -37,6 +39,7 @@ internal fun NoteSurfaceTheme(color: NoteColor, content: @Composable () -> Unit)
     MaterialTheme(colorScheme = colorScheme) {
         CompositionLocalProvider(
             LocalAppColors provides appColors,
+            LocalAccentColors provides appColors.accent.copy(content = onContainer),
             // Los textos e íconos sin color explícito toman el del contenido, no el claro heredado.
             LocalContentColor provides onContainer,
             content = content,
@@ -45,18 +48,22 @@ internal fun NoteSurfaceTheme(color: NoteColor, content: @Composable () -> Unit)
 }
 
 /**
- * Restaura el tema oscuro de la app dentro de un [NoteSurfaceTheme], para lo que no va sobre el color
+ * Restaura el tema de la app dentro de un [NoteSurfaceTheme], para lo que no va sobre el color
  * de la nota: barra inferior, menús y botones sobre imágenes. Fuera de él no cambia nada.
  */
 @Composable
 internal fun AppColorsTheme(content: @Composable () -> Unit) {
     val appColors = LocalAppColors.current ?: return content()
     MaterialTheme(colorScheme = appColors.colorScheme) {
-        CompositionLocalProvider(LocalContentColor provides appColors.contentColor, content = content)
+        CompositionLocalProvider(
+            LocalContentColor provides appColors.contentColor,
+            LocalAccentColors provides appColors.accent,
+            content = content,
+        )
     }
 }
 
-private data class AppColors(val colorScheme: ColorScheme, val contentColor: Color)
+private data class AppColors(val colorScheme: ColorScheme, val contentColor: Color, val accent: AccentColors)
 
 private val LocalAppColors = staticCompositionLocalOf<AppColors?> { null }
 
