@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
+import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.GetThemeModeUseCase
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SetDefaultNoteColorUseCase
+import com.example.notesapp.domain.settings.SetNotesViewUseCase
 import com.example.notesapp.domain.settings.SetThemeModeUseCase
 import com.example.notesapp.domain.settings.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,6 +31,8 @@ class SettingsViewModel @Inject constructor(
     private val setThemeMode: SetThemeModeUseCase,
     getDefaultNoteColor: GetDefaultNoteColorUseCase,
     private val setDefaultNoteColor: SetDefaultNoteColorUseCase,
+    getNotesView: GetNotesViewUseCase,
+    private val setNotesView: SetNotesViewUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -43,6 +48,9 @@ class SettingsViewModel @Inject constructor(
         getDefaultNoteColor()
             .onEach { color -> _state.update { it.copy(defaultNoteColor = color) } }
             .launchIn(viewModelScope)
+        getNotesView()
+            .onEach { view -> _state.update { it.copy(notesView = view) } }
+            .launchIn(viewModelScope)
     }
 
     fun onIntent(intent: SettingsIntent) {
@@ -55,6 +63,9 @@ class SettingsViewModel @Inject constructor(
             is SettingsIntent.DefaultColorOptionSelected -> _state.update { it.copy(defaultColorPicker = intent.color) }
             SettingsIntent.DefaultColorApplied -> applyDefaultColor()
             SettingsIntent.DefaultColorPickerDismissed -> _state.update { it.copy(defaultColorPicker = null) }
+            SettingsIntent.NotesViewRowClicked -> _state.update { it.copy(isNotesViewSheetVisible = true) }
+            SettingsIntent.NotesViewSheetDismissed -> _state.update { it.copy(isNotesViewSheetVisible = false) }
+            is SettingsIntent.NotesViewSelected -> selectNotesView(intent.view)
         }
     }
 
@@ -73,6 +84,13 @@ class SettingsViewModel @Inject constructor(
         if (picked == current.defaultNoteColor) return
         viewModelScope.launch {
             if (setDefaultNoteColor(picked) is AppResult.Error) _effects.send(SettingsEffect.ShowDefaultColorSaveError)
+        }
+    }
+
+    private fun selectNotesView(view: NotesView) {
+        if (view == _state.value.notesView) return
+        viewModelScope.launch {
+            if (setNotesView(view) is AppResult.Error) _effects.send(SettingsEffect.ShowNotesViewSaveError)
         }
     }
 

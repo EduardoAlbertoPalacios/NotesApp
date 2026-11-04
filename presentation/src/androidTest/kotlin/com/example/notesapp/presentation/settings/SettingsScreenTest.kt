@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.ThemeTestColors
@@ -48,6 +49,7 @@ import com.example.notesapp.presentation.assertColorEquals
 import com.example.notesapp.presentation.containsColor
 import com.example.notesapp.presentation.dominantColor
 import com.example.notesapp.presentation.notes.common.ColorPickerTestTags
+import com.example.notesapp.presentation.notes.common.labelRes
 import com.example.notesapp.presentation.textColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import org.junit.Assert.assertEquals
@@ -100,6 +102,9 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
                                 defaultColorPicker = null,
                             )
                             SettingsIntent.DefaultColorPickerDismissed -> state.copy(defaultColorPicker = null)
+                            SettingsIntent.NotesViewRowClicked -> state.copy(isNotesViewSheetVisible = true)
+                            is SettingsIntent.NotesViewSelected -> state.copy(notesView = intent.view)
+                            SettingsIntent.NotesViewSheetDismissed -> state.copy(isNotesViewSheetVisible = false)
                         }
                     },
                 )
@@ -145,6 +150,7 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
 
         row(SettingsTestTags.THEME_ROW).assert(hasText(string(R.string.settings_theme)))
         row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(R.string.settings_default_color)))
+        row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.settings_notes_view)))
         disabledRowDescriptions.forEach { (tag, description) ->
             row(tag).assertContentDescriptionEquals(description)
         }
@@ -354,7 +360,9 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
             R.string.note_color_sand to "Arena",
             R.string.note_color_apply to "Aplicar color",
             R.string.settings_notes_view to "Vista de notas",
-            R.string.settings_notes_view_value to "Cuadrícula",
+            R.string.notes_view_grid to "Cuadrícula",
+            R.string.notes_view_list to "Lista",
+            R.string.notes_view_save_error to "No se pudo guardar la vista",
             R.string.settings_auto_save to "Guardado automático",
             R.string.settings_auto_save_on to "Activado",
             R.string.settings_export to "Exportar notas",
@@ -684,6 +692,181 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         }
     }
 
+    @Test
+    fun given_notes_view_row_when_displayed_then_is_enabled_with_title_detail_and_click_action() {
+        setContent()
+
+        row(SettingsTestTags.NOTES_VIEW_ROW)
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assert(hasText(string(R.string.settings_notes_view)))
+            .assert(hasText(string(R.string.settings_notes_view_detail)))
+    }
+
+    @Test
+    fun given_each_notes_view_when_displayed_then_row_shows_its_name_and_not_the_other() {
+        var state by mutableStateOf(SettingsUiState(themeMode = activeMode))
+        composeRule.setContent {
+            NotesAppTheme(darkTheme = darkTheme) {
+                SettingsScreen(state = state, appVersion = APP_VERSION, onIntent = {})
+            }
+        }
+
+        NotesView.entries.forEach { view ->
+            state = state.copy(notesView = view)
+
+            row(SettingsTestTags.NOTES_VIEW_ROW)
+                .assert(hasText(string(view.labelRes())))
+                .assert(hasNoText(string(otherView(view).labelRes())))
+        }
+    }
+
+    @Test
+    fun given_theme_when_displayed_then_notes_view_value_is_gray_and_regular() {
+        setContent(SettingsUiState(themeMode = activeMode, notesView = NotesView.LIST))
+
+        val value = composeRule.onNode(
+            hasText(string(R.string.notes_view_list)) and hasAnyAncestor(hasTestTag(SettingsTestTags.NOTES_VIEW_ROW)),
+            useUnmergedTree = true,
+        )
+
+        assertColorEquals(
+            "Valor de la fila Vista de notas",
+            if (darkTheme) ThemeTestColors.DarkSecondaryText else ThemeTestColors.LightSecondaryText,
+            value.textColor(),
+        )
+        assertEquals(FontWeight.Normal, value.textFontWeight())
+    }
+
+    @Test
+    fun given_notes_view_row_when_clicked_then_sends_row_clicked() {
+        setContent()
+
+        row(SettingsTestTags.NOTES_VIEW_ROW).performClick()
+
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.NotesViewRowClicked), intents)
+    }
+
+    @Test
+    fun given_closed_notes_view_sheet_when_displayed_then_sheet_does_not_exist() {
+        setContent()
+
+        row(SettingsTestTags.NOTES_VIEW_SHEET).assertDoesNotExist()
+    }
+
+    @Test
+    fun given_stateful_screen_when_notes_view_row_clicked_then_opens_sheet_with_current_view_selected() {
+        setStatefulContent(SettingsUiState(themeMode = activeMode, notesView = NotesView.LIST))
+
+        row(SettingsTestTags.NOTES_VIEW_ROW).performClick()
+
+        row(SettingsTestTags.NOTES_VIEW_SHEET).assertIsDisplayed()
+        notesViewOption(NotesView.LIST).assertIsSelected()
+        notesViewOption(NotesView.GRID).assertIsNotSelected()
+    }
+
+    @Test
+    fun given_open_notes_view_sheet_when_displayed_then_shows_title_and_options_in_order_as_radio_buttons() {
+        setContent(openNotesViewSheetState())
+
+        composeRule.onNode(hasText(string(R.string.settings_notes_view)) and inNotesViewSheet).assertIsDisplayed()
+        composeRule.onAllNodes(hasRole(Role.RadioButton) and inNotesViewSheet).assertCountEquals(NotesView.entries.size)
+        notesViewOptionLabels.forEach { (view, labelRes) ->
+            notesViewOption(view)
+                .assertIsDisplayed()
+                .assertTextEquals(string(labelRes))
+                .assert(hasRole(Role.RadioButton))
+                .assertHasClickAction()
+        }
+        val tops = notesViewOptionLabels.keys.map { notesViewOption(it).getUnclippedBoundsInRoot().top.value }
+        assertEquals(tops.sorted(), tops)
+        assertTrue(tops.first() < tops.last())
+    }
+
+    @Test
+    fun given_each_notes_view_when_sheet_open_then_only_that_option_is_selected() {
+        var state by mutableStateOf(openNotesViewSheetState())
+        composeRule.setContent {
+            NotesAppTheme(darkTheme = darkTheme) {
+                SettingsScreen(state = state, appVersion = APP_VERSION, onIntent = {})
+            }
+        }
+
+        NotesView.entries.forEach { view ->
+            state = state.copy(notesView = view)
+
+            notesViewOption(view).assertIsSelected()
+            notesViewOption(otherView(view)).assertIsNotSelected()
+        }
+    }
+
+    @Test
+    fun given_open_notes_view_sheet_when_other_option_clicked_then_sends_selected_then_dismissed_and_closes() {
+        setStatefulContent(openNotesViewSheetState(NotesView.GRID))
+
+        notesViewOption(NotesView.LIST).performClick()
+        awaitIntent(SettingsIntent.NotesViewSheetDismissed)
+
+        assertEquals(
+            listOf(SettingsIntent.NotesViewSelected(NotesView.LIST), SettingsIntent.NotesViewSheetDismissed),
+            intents,
+        )
+        row(SettingsTestTags.NOTES_VIEW_SHEET).assertDoesNotExist()
+        row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.notes_view_list)))
+    }
+
+    @Test
+    fun given_open_notes_view_sheet_when_active_option_clicked_then_closes_and_row_does_not_change() {
+        setStatefulContent(openNotesViewSheetState(NotesView.LIST))
+
+        notesViewOption(NotesView.LIST).performClick()
+        awaitIntent(SettingsIntent.NotesViewSheetDismissed)
+
+        assertEquals(
+            listOf(SettingsIntent.NotesViewSelected(NotesView.LIST), SettingsIntent.NotesViewSheetDismissed),
+            intents,
+        )
+        row(SettingsTestTags.NOTES_VIEW_SHEET).assertDoesNotExist()
+        row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.notes_view_list)))
+    }
+
+    @Test
+    fun given_open_notes_view_sheet_when_swiped_away_then_only_sends_dismissed_and_keeps_view() {
+        setStatefulContent(openNotesViewSheetState(NotesView.LIST))
+
+        row(SettingsTestTags.NOTES_VIEW_SHEET).performTouchInput { swipeDown() }
+        awaitIntent(SettingsIntent.NotesViewSheetDismissed)
+
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.NotesViewSheetDismissed), intents)
+        row(SettingsTestTags.NOTES_VIEW_SHEET).assertDoesNotExist()
+        row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.notes_view_list)))
+    }
+
+    @Test
+    fun given_notes_view_elements_when_displayed_then_touch_targets_are_at_least_44_dp() {
+        setContent(openNotesViewSheetState())
+
+        val nodes = listOf(row(SettingsTestTags.NOTES_VIEW_ROW)) + NotesView.entries.map { notesViewOption(it) }
+        nodes.forEach { node ->
+            node.assertWidthIsAtLeast(MIN_TOUCH_TARGET).assertHeightIsAtLeast(MIN_TOUCH_TARGET)
+        }
+    }
+
+    private fun openNotesViewSheetState(view: NotesView = NotesView.GRID) =
+        SettingsUiState(themeMode = activeMode, notesView = view, isNotesViewSheetVisible = true)
+
+    private fun notesViewOption(view: NotesView) = row(SettingsTestTags.NOTES_VIEW_OPTION + view.name)
+
+    private fun otherView(view: NotesView) = NotesView.entries.first { it != view }
+
+    private val inNotesViewSheet = hasAnyAncestor(hasTestTag(SettingsTestTags.NOTES_VIEW_SHEET))
+
+    /** En el orden de la spec (RF-9), escrito aparte del enum para detectar un cambio de orden. */
+    private val notesViewOptionLabels = linkedMapOf(
+        NotesView.GRID to R.string.notes_view_grid,
+        NotesView.LIST to R.string.notes_view_list,
+    )
+
     private fun openPickerState(picked: NoteColor = NoteColor.AQUA) =
         SettingsUiState(themeMode = activeMode, defaultColorPicker = picked)
 
@@ -729,11 +912,6 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
 
     private val disabledRowDescriptions
         get() = mapOf(
-            SettingsTestTags.NOTES_VIEW_ROW to description(
-                R.string.settings_notes_view,
-                R.string.settings_notes_view_detail,
-                R.string.settings_notes_view_value,
-            ),
             SettingsTestTags.AUTO_SAVE_ROW to description(
                 R.string.settings_auto_save,
                 R.string.settings_auto_save_detail,

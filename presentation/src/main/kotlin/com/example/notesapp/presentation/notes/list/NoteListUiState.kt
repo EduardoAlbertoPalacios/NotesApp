@@ -2,7 +2,9 @@ package com.example.notesapp.presentation.notes.list
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.AnnotatedString
+import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 
 @Immutable
@@ -13,6 +15,8 @@ data class NoteListUiState(
     val selectedFilter: NoteFilter = NoteFilter.ALL,
     val query: String = "",
     val totalCount: Int = 0,
+    /** Vista de las notas; nula hasta leerla, mientras dura la carga. */
+    val notesView: NotesView? = null,
 ) {
     val isSearching: Boolean get() = query.isNotBlank()
     val isSearchEnabled: Boolean get() = totalCount > 0
@@ -30,4 +34,7 @@ data class NoteItemUi(
     val isPinned: Boolean,
     val date: NoteDateLabel,
     val imagePath: String? = null,
+    val category: NoteCategory? = null,
+    /** Contenido para la vista de lista: entre tareas consecutivas lleva `TASK_BREAK`, sin resolver. */
+    val listContent: AnnotatedString = content,
 )

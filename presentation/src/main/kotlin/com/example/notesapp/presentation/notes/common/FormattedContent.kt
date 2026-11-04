@@ -93,6 +93,12 @@ private fun String.withLineBreaksAsParagraphs(): String {
 
 private const val ZERO_WIDTH_SPACE = '\u200B'
 
+/** Marca, sin resolver, el punto entre dos tareas consecutivas: un carácter de uso privado que nunca se pinta. */
+internal const val TASK_BREAK = '\uE000'
+
+/** Separación entre dos tareas seguidas en la misma línea. */
+internal const val TASK_SEPARATOR = "     "
+
 /** Id del contenido en línea que dibuja una casilla pendiente en la tarjeta. */
 internal const val CARD_TASK_PENDING = "card_task_pending"
 
@@ -102,14 +108,19 @@ internal const val CARD_TASK_DONE = "card_task_done"
 /**
  * Contenido para la tarjeta de Mis notas: el formato y el tachado de las hechas, más una casilla en línea
  * ([CARD_TASK_PENDING] o [CARD_TASK_DONE]) al inicio de cada tarea. Las casillas solo se ven: no se tocan.
+ *
+ * Con [flowTasks] (la vista de lista), entre dos tareas consecutivas va [TASK_BREAK] en lugar del salto de
+ * línea. Antes de pintarlo hay que resolverlo con [wrapTasks], que necesita conocer el ancho disponible.
  */
 internal fun buildCardContent(
     content: String,
     spans: List<FormatSpan>,
     tasks: List<ChecklistItem>,
+    flowTasks: Boolean = false,
 ): AnnotatedString {
     val formatted = buildFormattedContent(content, spans, tasks)
     if (tasks.isEmpty()) return formatted
+    val taskLines = tasks.mapTo(mutableSetOf()) { it.line }
     val lines = lineRanges(content)
     return buildAnnotatedString {
         lines.forEachIndexed { index, line ->
@@ -121,12 +132,60 @@ internal fun buildCardContent(
                     alternateText = ZERO_WIDTH_SPACE.toString(),
                 )
             }
-            // La línea con su salto, conservando sus estilos.
-            val end = if (index < lines.lastIndex) line.last + 2 else line.last + 1
-            append(formatted.subSequence(line.first, end))
+            if (flowTasks && index in taskLines && index + 1 in taskLines) {
+                append(formatted.subSequence(line.first, line.last + 1))
+                append(TASK_BREAK)
+            } else {
+                // La línea con su salto, conservando sus estilos.
+                val end = if (index < lines.lastIndex) line.last + 2 else line.last + 1
+                append(formatted.subSequence(line.first, end))
+            }
         }
     }
 }
+
+/**
+ * Resuelve cada [TASK_BREAK]: la tarea sigue en la misma línea si cabe entera tras [TASK_SEPARATOR] y, si no,
+ * empieza en la siguiente. El texto no decide estos cortes porque podría separar una casilla en línea de su
+ * tarea. Una tarea más ancha que la línea empieza en una línea nueva y se reparte por palabras.
+ *
+ * @param measure ancho de una línea de tarea, con su casilla.
+ */
+internal fun AnnotatedString.wrapTasks(
+    maxWidth: Int,
+    separatorWidth: Int,
+    measure: (AnnotatedString) -> Int,
+): AnnotatedString {
+    if (TASK_BREAK !in text) return this
+    val pieces = splitOn(TASK_BREAK)
+    return buildAnnotatedString {
+        append(pieces.first())
+        var lineWidth = measure(pieces.first().lastLine())
+        pieces.drop(1).forEach { piece ->
+            val taskWidth = measure(piece.firstLine())
+            if (lineWidth + separatorWidth + taskWidth <= maxWidth) {
+                append(TASK_SEPARATOR)
+                lineWidth += separatorWidth + taskWidth
+            } else {
+                append('\n')
+                lineWidth = taskWidth
+            }
+            append(piece)
+            if ('\n' in piece.text) lineWidth = measure(piece.lastLine())
+        }
+    }
+}
+
+private fun AnnotatedString.splitOn(delimiter: Char): List<AnnotatedString> {
+    var start = 0
+    return text.split(delimiter).map { part ->
+        subSequence(start, start + part.length).also { start += part.length + 1 }
+    }
+}
+
+private fun AnnotatedString.firstLine(): AnnotatedString = subSequence(0, text.indexOf('\n').takeIf { it >= 0 } ?: length)
+
+private fun AnnotatedString.lastLine(): AnnotatedString = subSequence(text.lastIndexOf('\n') + 1, length)
 
 /** Rango de cada línea del contenido, sin su salto de línea (de `first` a `last`, incluidos). */
 private fun lineRanges(content: String): List<IntRange> {

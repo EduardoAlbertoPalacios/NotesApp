@@ -17,10 +17,16 @@ import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.domain.notes.TextFormat
+import com.example.notesapp.domain.settings.GetNotesViewUseCase
+import com.example.notesapp.domain.settings.NotesView
+import com.example.notesapp.domain.settings.SetNotesViewUseCase
+import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.presentation.MainDispatcherRule
 import com.example.notesapp.presentation.notes.common.CARD_TASK_DONE
 import com.example.notesapp.presentation.notes.common.CARD_TASK_PENDING
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
+import com.example.notesapp.presentation.notes.common.TASK_BREAK
+import com.example.notesapp.presentation.settings.FakeSettingsRepository
 import java.util.Locale
 import java.util.TimeZone
 import kotlinx.coroutines.flow.Flow
@@ -28,7 +34,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -54,10 +63,23 @@ class NoteListViewModelTest {
         timeZone = TimeZone.getTimeZone("UTC"),
     )
 
-    private fun createViewModel(savedStateHandle: SavedStateHandle = SavedStateHandle()) = NoteListViewModel(
+    private val settings = FakeSettingsRepository()
+
+    /** Ya hay una vista leída: sin ella la carga no termina, y estas pruebas tratan de las notas. */
+    @Before
+    fun storeNotesView() = runTest {
+        settings.emitStoredNotesView(NotesView.GRID)
+    }
+
+    private fun createViewModel(
+        savedStateHandle: SavedStateHandle = SavedStateHandle(),
+        settingsRepository: FakeSettingsRepository = settings,
+    ) = NoteListViewModel(
         savedStateHandle,
         GetNotesUseCase(repository, mainDispatcherRule.testDispatcher),
         dateFormatter,
+        GetNotesViewUseCase(settingsRepository),
+        SetNotesViewUseCase(settingsRepository),
     )
 
     @Test
@@ -98,7 +120,7 @@ class NoteListViewModelTest {
 
         notes.emit(AppResult.Success(emptyList()))
 
-        assertEquals(NoteListUiState(isLoading = false, notes = emptyList()), viewModel.state.value)
+        assertEquals(NoteListUiState(isLoading = false, notes = emptyList(), notesView = NotesView.GRID), viewModel.state.value)
     }
 
     @Test
@@ -107,7 +129,7 @@ class NoteListViewModelTest {
 
         notes.emit(AppResult.Error(NoteError.Storage))
 
-        assertEquals(NoteListUiState(isLoading = false, hasError = true), viewModel.state.value)
+        assertEquals(NoteListUiState(isLoading = false, hasError = true, notesView = NotesView.GRID), viewModel.state.value)
     }
 
     @Test
@@ -208,6 +230,7 @@ class NoteListViewModelTest {
                 notes = emptyList(),
                 selectedFilter = NoteFilter.WORK,
                 totalCount = 1,
+                notesView = NotesView.GRID,
             ),
             viewModel.state.value,
         )
@@ -521,6 +544,239 @@ class NoteListViewModelTest {
         assertEquals(
             listOf(AnnotatedString.Range(SpanStyle(textDecoration = TextDecoration.LineThrough), 10, 13)),
             content.spanStyles,
+        )
+    }
+
+    @Test
+    fun `given notes but view not read yet when loaded then keeps loading without showing them`() = runTest {
+        val pendingSettings = FakeSettingsRepository()
+        val viewModel = createViewModel(settingsRepository = pendingSettings)
+
+        notes.emit(AppResult.Success(mixedNotes))
+
+        assertEquals(NoteListUiState(isLoading = true), viewModel.state.value)
+    }
+
+    @Test
+    fun `given view read but notes pending when loaded then keeps loading with view still null`() = runTest {
+        val viewModel = createViewModel()
+
+        assertEquals(NoteListUiState(isLoading = true), viewModel.state.value)
+        assertNull(viewModel.state.value.notesView)
+    }
+
+    @Test
+    fun `given stored list view when notes arrive then first loaded state already has list view`() = runTest {
+        val pendingSettings = FakeSettingsRepository()
+        val viewModel = createViewModel(settingsRepository = pendingSettings)
+
+        viewModel.state.test {
+            assertEquals(NoteListUiState(isLoading = true), awaitItem())
+
+            pendingSettings.emitStoredNotesView(NotesView.LIST)
+            expectNoEvents()
+            notes.emit(AppResult.Success(mixedNotes))
+
+            val loaded = awaitItem()
+            assertFalse(loaded.isLoading)
+            assertEquals(NotesView.LIST, loaded.notesView)
+            assertEquals(listOf(1L, 2L, 3L), loaded.notes.map { it.id })
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given storage error but view not read yet when loading then keeps loading until view arrives`() = runTest {
+        val pendingSettings = FakeSettingsRepository()
+        val viewModel = createViewModel(settingsRepository = pendingSettings)
+
+        notes.emit(AppResult.Error(NoteError.Storage))
+        assertEquals(NoteListUiState(isLoading = true), viewModel.state.value)
+
+        pendingSettings.emitStoredNotesView(NotesView.LIST)
+
+        assertEquals(
+            NoteListUiState(isLoading = false, hasError = true, notesView = NotesView.LIST),
+            viewModel.state.value,
+        )
+    }
+
+    @Test
+    fun `given repository without view when loaded then uses grid`() = runTest {
+        val emptySettings = FakeSettingsRepository()
+        emptySettings.emitStoredNotesView(null)
+        val viewModel = createViewModel(settingsRepository = emptySettings)
+
+        notes.emit(AppResult.Success(mixedNotes))
+
+        assertEquals(NotesView.GRID, viewModel.state.value.notesView)
+        assertFalse(viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun `given stored view when it changes elsewhere then state follows it`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+
+        settings.emitStoredNotesView(NotesView.LIST)
+
+        assertEquals(NotesView.LIST, viewModel.state.value.notesView)
+    }
+
+    @Test
+    fun `given other view when selected then saves it and state shows it without effects`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.NotesViewSelected(NotesView.LIST))
+
+            expectNoEvents()
+        }
+
+        assertEquals(NotesView.LIST, viewModel.state.value.notesView)
+        assertEquals(listOf(NotesView.LIST), settings.savedNotesViews)
+    }
+
+    @Test
+    fun `given active view when selected again then does not save nor change anything`() = runTest {
+        settings.notesViewSaveResult = AppResult.Error(SettingsError.Storage)
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+        val before = viewModel.state.value
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.NotesViewSelected(NotesView.GRID))
+
+            expectNoEvents()
+        }
+
+        assertEquals(before, viewModel.state.value)
+        assertTrue(settings.savedNotesViews.isEmpty())
+    }
+
+    @Test
+    fun `given save fails when view selected then emits its error and keeps chosen view`() = runTest {
+        settings.notesViewSaveResult = AppResult.Error(SettingsError.Storage)
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.NotesViewSelected(NotesView.LIST))
+
+            assertEquals(NoteListEffect.ShowNotesViewSaveError, awaitItem())
+            expectNoEvents()
+        }
+
+        assertEquals(NotesView.LIST, viewModel.state.value.notesView)
+    }
+
+    @Test
+    fun `given category filter when view changes then keeps filter and its notes`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.WORK))
+        val notesBefore = viewModel.state.value.notes
+
+        viewModel.onIntent(NoteListIntent.NotesViewSelected(NotesView.LIST))
+
+        val state = viewModel.state.value
+        assertEquals(NotesView.LIST, state.notesView)
+        assertEquals(NoteFilter.WORK, state.selectedFilter)
+        assertEquals(listOf(1L), state.notes.map { it.id })
+        assertEquals(notesBefore, state.notes)
+    }
+
+    @Test
+    fun `given loaded notes when view changes then keeps the same notes instance`() = runTest {
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+        val notesBefore = viewModel.state.value.notes
+        assertEquals(listOf(1L, 2L, 3L), notesBefore.map { it.id })
+
+        viewModel.onIntent(NoteListIntent.NotesViewSelected(NotesView.LIST))
+
+        assertEquals(NotesView.LIST, viewModel.state.value.notesView)
+        assertSame(notesBefore, viewModel.state.value.notes)
+    }
+
+    @Test
+    fun `given active search when view changes then keeps query and results`() = runTest {
+        val savedStateHandle = SavedStateHandle()
+        val viewModel = createViewModel(savedStateHandle)
+        notes.emit(AppResult.Success(searchNotes))
+        viewModel.onIntent(NoteListIntent.QueryChanged("reunion"))
+
+        viewModel.onIntent(NoteListIntent.NotesViewSelected(NotesView.LIST))
+
+        val state = viewModel.state.value
+        assertEquals(NotesView.LIST, state.notesView)
+        assertEquals("reunion", state.query)
+        assertEquals("reunion", savedStateHandle.get<String>("query"))
+        assertEquals(listOf(1L), state.notes.map { it.id })
+    }
+
+    @Test
+    fun `given list view when searching then results are shown in that view`() = runTest {
+        settings.emitStoredNotesView(NotesView.LIST)
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(searchNotes))
+
+        viewModel.onIntent(NoteListIntent.QueryChanged("lista"))
+
+        val state = viewModel.state.value
+        assertEquals(NotesView.LIST, state.notesView)
+        assertEquals(listOf(2L, 3L), state.notes.map { it.id })
+    }
+
+    @Test
+    fun `given list view when filter changes then keeps the view`() = runTest {
+        settings.emitStoredNotesView(NotesView.LIST)
+        val viewModel = createViewModel()
+        notes.emit(AppResult.Success(mixedNotes))
+
+        viewModel.onIntent(NoteListIntent.FilterSelected(NoteFilter.PERSONAL))
+
+        assertEquals(NotesView.LIST, viewModel.state.value.notesView)
+        assertEquals(listOf(2L), viewModel.state.value.notes.map { it.id })
+    }
+
+    @Test
+    fun `given notes with and without category when loaded then ui items carry it`() = runTest {
+        val viewModel = createViewModel()
+
+        notes.emit(AppResult.Success(mixedNotes))
+
+        assertEquals(
+            listOf(NoteCategory.WORK, NoteCategory.PERSONAL, null),
+            viewModel.state.value.notes.map { it.category },
+        )
+    }
+
+    @Test
+    fun `given note without tasks when loaded then list content is the card content`() = runTest {
+        val viewModel = createViewModel()
+        val spans = listOf(FormatSpan(0, 2, TextFormat.BOLD))
+
+        notes.emit(AppResult.Success(listOf(note(id = 1, content = "Un café\nrápido", contentSpans = spans))))
+
+        val item = viewModel.state.value.notes.single()
+        assertSame(item.content, item.listContent)
+    }
+
+    @Test
+    fun `given note with consecutive tasks when loaded then only list content joins them with a mark`() = runTest {
+        val viewModel = createViewModel()
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true))
+
+        notes.emit(AppResult.Success(listOf(note(id = 1, content = "Tomates\nPan\nNota", contentTasks = tasks))))
+
+        val item = viewModel.state.value.notes.single()
+        assertEquals("Tomates\nPan\nNota", item.content.text.replace("\u200B", ""))
+        assertEquals("Tomates${TASK_BREAK}Pan\nNota", item.listContent.text.replace("\u200B", ""))
+        assertEquals(
+            listOf(AnnotatedString.Range(SpanStyle(textDecoration = TextDecoration.LineThrough), 10, 13)),
+            item.listContent.spanStyles,
         )
     }
 

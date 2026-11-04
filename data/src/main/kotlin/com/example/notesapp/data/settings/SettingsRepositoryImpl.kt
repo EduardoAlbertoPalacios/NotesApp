@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.SettingsRepository
 import com.example.notesapp.domain.settings.ThemeMode
@@ -19,7 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
-/** Singleton porque [chosenThemeMode] y [chosenDefaultNoteColor] deben ser los mismos para toda la sesión. */
+/** Singleton porque lo elegido en la sesión ([chosenThemeMode] y los demás) debe ser lo mismo para toda ella. */
 @Singleton
 internal class SettingsRepositoryImpl @Inject constructor(
     private val dataStore: DataStore<Preferences>,
@@ -33,6 +34,9 @@ internal class SettingsRepositoryImpl @Inject constructor(
 
     /** Último color predeterminado elegido en esta sesión; tiene prioridad sobre lo leído, como [chosenThemeMode]. */
     private val chosenDefaultNoteColor = MutableStateFlow<NoteColor?>(null)
+
+    /** Última vista elegida en esta sesión; tiene prioridad sobre lo leído, como [chosenThemeMode]. */
+    private val chosenNotesView = MutableStateFlow<NotesView?>(null)
 
     override fun observeThemeMode(): Flow<ThemeMode?> =
         combine(storedThemeMode(), chosenThemeMode) { stored, chosen -> chosen ?: stored }
@@ -62,6 +66,20 @@ internal class SettingsRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun observeNotesView(): Flow<NotesView?> =
+        combine(storedNotesView(), chosenNotesView) { stored, chosen -> chosen ?: stored }
+            .distinctUntilChanged()
+
+    override suspend fun setNotesView(view: NotesView): AppResult<Unit, SettingsError> {
+        chosenNotesView.value = view
+        return try {
+            dataStore.edit { it[NOTES_VIEW] = view.toStorageValue() }
+            AppResult.Success(Unit)
+        } catch (_: IOException) {
+            AppResult.Error(SettingsError.Storage)
+        }
+    }
+
     private fun storedThemeMode(): Flow<ThemeMode?> =
         dataStore.data
             .map { it[THEME_MODE].toThemeModeOrNull() }
@@ -72,8 +90,14 @@ internal class SettingsRepositoryImpl @Inject constructor(
             .map { it[DEFAULT_NOTE_COLOR].toNoteColorOrNull() }
             .catch { error -> if (error is IOException) emit(null) else throw error }
 
+    private fun storedNotesView(): Flow<NotesView?> =
+        dataStore.data
+            .map { it[NOTES_VIEW].toNotesViewOrNull() }
+            .catch { error -> if (error is IOException) emit(null) else throw error }
+
     private companion object {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DEFAULT_NOTE_COLOR = stringPreferencesKey("default_note_color")
+        val NOTES_VIEW = stringPreferencesKey("notes_view")
     }
 }

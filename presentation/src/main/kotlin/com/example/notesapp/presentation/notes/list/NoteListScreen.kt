@@ -1,12 +1,15 @@
 package com.example.notesapp.presentation.notes.list
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -38,9 +41,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +72,7 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -74,16 +81,21 @@ import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.TextFormat
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.CARD_TASK_DONE
 import com.example.notesapp.presentation.notes.common.CARD_TASK_PENDING
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
+import com.example.notesapp.presentation.notes.common.TASK_BREAK
+import com.example.notesapp.presentation.notes.common.TASK_SEPARATOR
 import com.example.notesapp.presentation.notes.common.asText
 import com.example.notesapp.presentation.notes.common.buildCardContent
 import com.example.notesapp.presentation.notes.common.buildFormattedContent
+import com.example.notesapp.presentation.notes.common.labelRes
 import com.example.notesapp.presentation.notes.common.toContainerColor
 import com.example.notesapp.presentation.notes.common.toContentColor
 import com.example.notesapp.presentation.notes.common.toMetadataColor
+import com.example.notesapp.presentation.notes.common.wrapTasks
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
 import java.io.File
@@ -101,6 +113,9 @@ object NoteListTestTags {
     const val SEARCH_FIELD = "note_list_search_field"
     const val SEARCH_CLEAR = "note_list_search_clear"
     const val SEARCH_NO_RESULTS = "note_list_search_no_results"
+    const val VIEW_SELECTOR = "note_list_view_selector"
+    const val VIEW_OPTION = "note_list_view_"
+    const val CATEGORY_TAG = "note_list_category_tag_"
 }
 
 @Composable
@@ -108,9 +123,11 @@ fun NoteListScreen(
     state: NoteListUiState,
     onIntent: (NoteListIntent) -> Unit,
     modifier: Modifier = Modifier,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val spacing = NotesTheme.spacing
     val sizes = NotesTheme.sizes
+    val view = state.notesView ?: NotesView.DEFAULT
     val insets = WindowInsets.safeDrawing.asPaddingValues()
     val layoutDirection = LocalLayoutDirection.current
 
@@ -120,7 +137,7 @@ fun NoteListScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(NOTE_COLUMNS),
+            columns = StaggeredGridCells.Fixed(if (view == NotesView.LIST) 1 else NOTE_COLUMNS),
             modifier = Modifier
                 .fillMaxSize()
                 .testTag(NoteListTestTags.NOTE_GRID),
@@ -141,6 +158,7 @@ fun NoteListScreen(
             fullLineItem {
                 Filters(selected = state.selectedFilter, isSearching = state.isSearching, onIntent = onIntent)
             }
+            fullLineItem { NotesViewSelector(selected = state.notesView, onIntent = onIntent) }
             fullLineItem { SortRow() }
             when {
                 state.isLoading -> fullLineItem { LoadingState() }
@@ -166,7 +184,7 @@ fun NoteListScreen(
                     )
                 }
                 else -> items(items = state.notes, key = { it.id }) { note ->
-                    NoteCard(note = note, onClick = { onIntent(NoteListIntent.NoteClicked(note.id)) })
+                    NoteCard(note = note, view = view, onClick = { onIntent(NoteListIntent.NoteClicked(note.id)) })
                 }
             }
         }
@@ -177,6 +195,15 @@ fun NoteListScreen(
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
                 .padding(end = spacing.screen, bottom = spacing.xxs),
+        )
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                // Por encima del botón flotante, para no taparlo.
+                .padding(bottom = sizes.fabHeight + spacing.s),
         )
     }
 }
@@ -381,6 +408,76 @@ private fun FilterChip(
 }
 
 @Composable
+private fun NotesViewSelector(
+    selected: NotesView?,
+    onIntent: (NoteListIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = NotesTheme.spacing
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(NotesTheme.radii.card))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(spacing.xxs)
+            .selectableGroup()
+            .testTag(NoteListTestTags.VIEW_SELECTOR),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xxs),
+    ) {
+        NotesView.entries.forEach { view ->
+            NotesViewOption(
+                view = view,
+                isSelected = view == selected,
+                onClick = { onIntent(NoteListIntent.NotesViewSelected(view)) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NotesViewOption(
+    view: NotesView,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val typography = NotesTheme.typography
+    val contentColor = if (isSelected) colors.onPrimary else colors.onSurfaceVariant
+    Column(
+        modifier = modifier
+            .height(NotesTheme.sizes.viewOption)
+            .clip(RoundedCornerShape(NotesTheme.radii.viewOption))
+            .background(if (isSelected) colors.primary else Color.Transparent)
+            // La etiqueta es el texto de la opción; el rol anuncia si está seleccionada.
+            .selectable(selected = isSelected, role = Role.RadioButton, onClick = onClick)
+            .testTag(NoteListTestTags.VIEW_OPTION + view.name),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(NotesTheme.spacing.xs, Alignment.CenterVertically),
+    ) {
+        Icon(
+            painter = painterResource(view.iconRes()),
+            contentDescription = null,
+            modifier = Modifier.size(NotesTheme.sizes.viewOptionIcon),
+            tint = contentColor,
+        )
+        Text(
+            text = stringResource(view.labelRes()),
+            style = if (isSelected) typography.viewOptionSelected else typography.viewOption,
+            color = contentColor,
+            maxLines = 1,
+        )
+    }
+}
+
+@DrawableRes
+private fun NotesView.iconRes(): Int = when (this) {
+    NotesView.GRID -> R.drawable.ic_layout_grid
+    NotesView.LIST -> R.drawable.ic_list
+}
+
+@Composable
 private fun SortRow(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
@@ -405,10 +502,12 @@ private fun SortRow(modifier: Modifier = Modifier) {
 @Composable
 private fun NoteCard(
     note: NoteItemUi,
+    view: NotesView,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = NotesTheme.spacing
+    val isList = view == NotesView.LIST
     Surface(
         onClick = onClick,
         modifier = modifier
@@ -431,7 +530,7 @@ private fun NoteCard(
             }
             Column(
                 modifier = Modifier.padding(spacing.l),
-                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(if (isList) spacing.m else spacing.sm),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(spacing.s)) {
                     Text(
@@ -448,21 +547,94 @@ private fun NoteCard(
                         )
                     }
                 }
-                Text(
-                    text = note.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = CONTENT_MAX_LINES,
-                    overflow = TextOverflow.Ellipsis,
-                    inlineContent = cardTaskInlineContent(note.color),
-                )
-                Text(
-                    text = note.date.asText(),
-                    modifier = Modifier.padding(top = spacing.xxs),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = note.color.toMetadataColor(),
-                )
+                if (isList) {
+                    ListCardContent(note = note)
+                    ListCardFooter(note = note)
+                } else {
+                    Text(
+                        text = note.content,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = CONTENT_MAX_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                        inlineContent = cardTaskInlineContent(note.color),
+                    )
+                    Text(
+                        text = note.date.asText(),
+                        modifier = Modifier.padding(top = spacing.xxs),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = note.color.toMetadataColor(),
+                    )
+                }
             }
         }
+    }
+}
+
+/** Contenido de la tarjeta de lista: reparte las tareas seguidas según el ancho disponible. */
+@Composable
+private fun ListCardContent(note: NoteItemUi, modifier: Modifier = Modifier) {
+    val style = NotesTheme.typography.listCardContent
+    // Sin tareas seguidas no hay nada que medir.
+    if (TASK_BREAK !in note.listContent.text) {
+        Text(
+            text = note.listContent,
+            modifier = modifier,
+            style = style,
+            maxLines = LIST_CONTENT_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            inlineContent = cardTaskInlineContent(note.color),
+        )
+        return
+    }
+    val sizes = NotesTheme.sizes
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val maxWidth = constraints.maxWidth
+        val checkboxWidth = with(LocalDensity.current) { (sizes.cardTaskCheckbox + sizes.cardTaskGap).roundToPx() }
+        val text = remember(note.listContent, maxWidth, style, checkboxWidth) {
+            val widthOf = { line: AnnotatedString ->
+                measurer.measure(line, style = style, softWrap = false, maxLines = 1).size.width
+            }
+            // Los espacios al final de una línea no cuentan: se miden entre dos letras.
+            val separatorWidth = widthOf(AnnotatedString("a${TASK_SEPARATOR}a")) - widthOf(AnnotatedString("aa"))
+            note.listContent.wrapTasks(maxWidth, separatorWidth) { line -> widthOf(line) + checkboxWidth }
+        }
+        Text(
+            text = text,
+            style = style,
+            maxLines = LIST_CONTENT_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            inlineContent = cardTaskInlineContent(note.color),
+        )
+    }
+}
+
+/** Pie de la tarjeta de lista: la etiqueta de categoría, si la hay, y la fecha a la derecha. */
+@Composable
+private fun ListCardFooter(note: NoteItemUi, modifier: Modifier = Modifier) {
+    val metadataColor = note.color.toMetadataColor()
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        note.category?.let { category ->
+            Text(
+                text = stringResource(category.labelRes()),
+                modifier = Modifier
+                    .border(
+                        width = NotesTheme.sizes.listCardTagBorder,
+                        color = metadataColor,
+                        shape = RoundedCornerShape(NotesTheme.radii.tag),
+                    )
+                    .padding(horizontal = NotesTheme.spacing.s, vertical = NotesTheme.spacing.xxs)
+                    .testTag(NoteListTestTags.CATEGORY_TAG + note.id),
+                style = NotesTheme.typography.listCardTag,
+                color = metadataColor,
+            )
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = note.date.asText(),
+            style = NotesTheme.typography.listCardDate,
+            color = metadataColor,
+        )
     }
 }
 
@@ -607,6 +779,7 @@ private fun NoteFilter.emptyMessageRes(): Int = when (this) {
 private const val NOTE_COLUMNS = 2
 private const val TITLE_MAX_LINES = 2
 private const val CONTENT_MAX_LINES = 8
+private const val LIST_CONTENT_MAX_LINES = 4
 
 private val previewNotes = listOf(
     NoteItemUi(
@@ -700,6 +873,28 @@ private fun NoteListScreenContentPreview() {
 private fun NoteListScreenLightPreview() {
     NotesAppTheme(darkTheme = false) {
         NoteListScreen(state = NoteListUiState(isLoading = false, notes = previewNotes), onIntent = {})
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteListScreenListViewPreview() {
+    NotesAppTheme {
+        NoteListScreen(
+            state = NoteListUiState(isLoading = false, notes = previewNotes, notesView = NotesView.LIST),
+            onIntent = {},
+        )
+    }
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NoteListScreenListViewLightPreview() {
+    NotesAppTheme(darkTheme = false) {
+        NoteListScreen(
+            state = NoteListUiState(isLoading = false, notes = previewNotes, notesView = NotesView.LIST),
+            onIntent = {},
+        )
     }
 }
 

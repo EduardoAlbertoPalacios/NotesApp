@@ -16,4 +16,10 @@ interface SettingsRepository {
 
     /** Si no se puede guardar, devuelve el error pero [observeDefaultNoteColor] sigue emitiendo [color] durante la sesión. */
     suspend fun setDefaultNoteColor(color: NoteColor): AppResult<Unit, SettingsError>
+
+    /** Vista de Mis notas; `null` si no hay ninguna guardada o no se puede leer. */
+    fun observeNotesView(): Flow<NotesView?>
+
+    /** Si no se puede guardar, devuelve el error pero [observeNotesView] sigue emitiendo [view] durante la sesión. */
+    suspend fun setNotesView(view: NotesView): AppResult<Unit, SettingsError>
 }
