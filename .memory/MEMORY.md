@@ -10,7 +10,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
 - En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005) y color predeterminado (007, PR #8).
 - **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
-- **Vista de notas** (spec 008): implementada en `feat/notes-view`, sin PR. Funcionan las filas Tema, Color predeterminado y Vista de notas; las otras 4 van atenuadas.
+- **Vista de notas** (spec 008): implementada en `feat/notes-view`, PR #9 abierto. Funcionan las filas Tema, Color predeterminado y Vista de notas; las otras 4 van atenuadas.
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.

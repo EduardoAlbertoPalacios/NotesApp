@@ -1,6 +1,6 @@
 # Tareas 008 — Vista de notas: cuadrícula o lista
 
-> **Estado:** implementada; pendiente T24 (PR) · **Fecha:** 2026-11-04 · **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
+> **Estado:** completada (PR #9) · **Fecha:** 2026-11-04 · **Spec:** [spec.md](spec.md) · **Plan:** [plan.md](plan.md)
 
 Tareas en orden de dependencia: cada una solo necesita las anteriores. Las pruebas las escribe el agente `test-writer`, y ningún commit se hace sin que pasen las pruebas (principio 4) ni sin tu confirmación.
 
@@ -110,6 +110,6 @@ Tareas en orden de dependencia: cada una solo necesita las anteriores. Las prueb
   - **Cubre:** —
   - **Hecho cuando:** el archivo refleja las specs 007 y 008.
 
-- [ ] **T24. Commit y PR** (con tu confirmación). Marcar spec, plan y tareas como implementados. Hacer el commit con Conventional Commits y abrir el PR hacia `main`.
+- [x] **T24. Commit y PR** (con tu confirmación). Marcar spec, plan y tareas como implementados. Hacer el commit con Conventional Commits y abrir el PR hacia `main`.
   - **Cubre:** principios 2 y 4
   - **Hecho cuando:** el PR está abierto.
