@@ -44,8 +44,11 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.notes.common.NoteColorPickerSheet
+import com.example.notesapp.presentation.notes.common.labelRes
 import com.example.notesapp.presentation.theme.DisabledAlpha
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
@@ -64,7 +67,7 @@ internal object SettingsTestTags {
     const val THEME_OPTION = "settings_theme_option_"
 }
 
-/** Solo la fila Tema funciona; las demás se ven deshabilitadas hasta tener su propia spec. */
+/** Solo funcionan las filas Tema y Color predeterminado; las demás se ven deshabilitadas hasta tener su propia spec. */
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
@@ -89,6 +92,17 @@ fun SettingsScreen(
     }
     if (state.isThemeSheetVisible) {
         ThemeSheet(selected = state.themeMode, onIntent = onIntent)
+    }
+    state.defaultColorPicker?.let { pickerColor ->
+        NoteColorPickerSheet(
+            title = stringResource(R.string.settings_default_color),
+            description = stringResource(R.string.settings_default_color_detail),
+            previewTitle = stringResource(R.string.settings_default_color_preview_title),
+            pickerColor = pickerColor,
+            onColorSelected = { onIntent(SettingsIntent.DefaultColorOptionSelected(it)) },
+            onApply = { onIntent(SettingsIntent.DefaultColorApplied) },
+            onDismiss = { onIntent(SettingsIntent.DefaultColorPickerDismissed) },
+        )
     }
 }
 
@@ -145,12 +159,9 @@ private fun SettingsContent(
         SettingsGroup(titleRes = R.string.settings_section_appearance) {
             ThemeRow(mode = state.themeMode, onClick = { onIntent(SettingsIntent.ThemeRowClicked) })
             GroupDivider()
-            DisabledRow(
-                iconRes = R.drawable.ic_palette,
-                titleRes = R.string.settings_default_color,
-                detailRes = R.string.settings_default_color_detail,
-                testTag = SettingsTestTags.DEFAULT_COLOR_ROW,
-                valueRes = R.string.settings_default_color_value,
+            DefaultColorRow(
+                color = state.defaultNoteColor,
+                onClick = { onIntent(SettingsIntent.DefaultColorRowClicked) },
             )
             GroupDivider()
             DisabledRow(
@@ -291,6 +302,25 @@ private fun ThemeRow(mode: ThemeMode, onClick: () -> Unit, modifier: Modifier = 
             text = stringResource(mode.labelRes()),
             style = NotesTheme.typography.settingsActiveValue,
             color = NotesTheme.accent.settingsValue,
+        )
+        Chevron()
+    }
+}
+
+@Composable
+private fun DefaultColorRow(color: NoteColor, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    SettingsRow(
+        iconRes = R.drawable.ic_palette,
+        titleRes = R.string.settings_default_color,
+        detailRes = R.string.settings_default_color_detail,
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(SettingsTestTags.DEFAULT_COLOR_ROW),
+    ) {
+        Text(
+            text = stringResource(color.labelRes()),
+            style = NotesTheme.typography.settingsValue,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Chevron()
     }

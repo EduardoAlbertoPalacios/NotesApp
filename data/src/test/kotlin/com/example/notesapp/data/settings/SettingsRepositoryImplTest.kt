@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.ThemeMode
 import java.io.IOException
@@ -16,9 +17,14 @@ import org.junit.Test
 class SettingsRepositoryImplTest {
 
     private val themeModeKey = stringPreferencesKey("theme_mode")
+    private val defaultNoteColorKey = stringPreferencesKey("default_note_color")
 
     private fun dataStore(storedValue: String? = null) = FakePreferencesDataStore(
         storedValue?.let { preferencesOf(themeModeKey to it) } ?: emptyPreferences(),
+    )
+
+    private fun colorDataStore(storedValue: String? = null) = FakePreferencesDataStore(
+        storedValue?.let { preferencesOf(defaultNoteColorKey to it) } ?: emptyPreferences(),
     )
 
     @Test
@@ -149,5 +155,213 @@ class SettingsRepositoryImplTest {
         dataStore.writeFailure = IllegalStateException("bug")
 
         SettingsRepositoryImpl(dataStore).setThemeMode(ThemeMode.LIGHT)
+    }
+
+    @Test
+    fun `given no stored color when observing then emits null`() = runTest {
+        val repository = SettingsRepositoryImpl(colorDataStore())
+
+        repository.observeDefaultNoteColor().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given each stored text when observing then emits its color`() = runTest {
+        colorsByStorageValue.forEach { (storageValue, color) ->
+            val repository = SettingsRepositoryImpl(colorDataStore(storedValue = storageValue))
+
+            repository.observeDefaultNoteColor().test {
+                assertEquals(color, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun `given each color when saving then stores its stable text`() = runTest {
+        colorsByStorageValue.forEach { (storageValue, color) ->
+            val dataStore = colorDataStore()
+
+            val result = SettingsRepositoryImpl(dataStore).setDefaultNoteColor(color)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(storageValue, dataStore.preferences.value[defaultNoteColorKey])
+        }
+    }
+
+    @Test
+    fun `given observed color when saving then stores its value and emits the new color`() = runTest {
+        val dataStore = colorDataStore(storedValue = "aqua")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeDefaultNoteColor().test {
+            assertEquals(NoteColor.AQUA, awaitItem())
+
+            val result = repository.setDefaultNoteColor(NoteColor.MINT)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(NoteColor.MINT, awaitItem())
+            assertEquals("mint", dataStore.preferences.value[defaultNoteColorKey])
+        }
+    }
+
+    @Test
+    fun `given saved color when the app reopens then emits that color`() = runTest {
+        val dataStore = colorDataStore()
+        SettingsRepositoryImpl(dataStore).setDefaultNoteColor(NoteColor.NONE)
+
+        val reopened = SettingsRepositoryImpl(dataStore)
+
+        reopened.observeDefaultNoteColor().test {
+            assertEquals(NoteColor.NONE, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given unknown stored color when observing then emits null`() = runTest {
+        val repository = SettingsRepositoryImpl(colorDataStore(storedValue = "turquoise"))
+
+        repository.observeDefaultNoteColor().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given io failure when reading color then emits null`() = runTest {
+        val dataStore = colorDataStore(storedValue = "mint")
+        dataStore.readFailure = IOException("disk failure")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeDefaultNoteColor().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given unexpected failure when reading color then propagates it`() = runTest {
+        val dataStore = colorDataStore(storedValue = "mint")
+        dataStore.readFailure = IllegalStateException("bug")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeDefaultNoteColor().test {
+            assertTrue(awaitError() is IllegalStateException)
+        }
+    }
+
+    @Test
+    fun `given io failure when reading color and a later save succeeds then emits the saved color`() = runTest {
+        val dataStore = colorDataStore()
+        dataStore.readFailure = IOException("disk failure")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeDefaultNoteColor().test {
+            assertEquals(null, awaitItem())
+            dataStore.readFailure = null
+
+            val result = repository.setDefaultNoteColor(NoteColor.MINT)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(NoteColor.MINT, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given io failure when saving color then returns storage error and keeps emitting the chosen color`() = runTest {
+        val dataStore = colorDataStore(storedValue = "aqua")
+        dataStore.writeFailure = IOException("disk full")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeDefaultNoteColor().test {
+            assertEquals(NoteColor.AQUA, awaitItem())
+
+            val result = repository.setDefaultNoteColor(NoteColor.MINT)
+
+            assertEquals(AppResult.Error(SettingsError.Storage), result)
+            assertEquals(NoteColor.MINT, awaitItem())
+        }
+        repository.observeDefaultNoteColor().test {
+            assertEquals(NoteColor.MINT, awaitItem())
+        }
+        assertEquals("aqua", dataStore.preferences.value[defaultNoteColorKey])
+    }
+
+    @Test
+    fun `given failed color save when the app reopens then emits the last stored color`() = runTest {
+        val dataStore = colorDataStore(storedValue = "rose")
+        dataStore.writeFailure = IOException("disk full")
+        SettingsRepositoryImpl(dataStore).setDefaultNoteColor(NoteColor.MINT)
+
+        val reopened = SettingsRepositoryImpl(dataStore)
+
+        reopened.observeDefaultNoteColor().test {
+            assertEquals(NoteColor.ROSE, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given failed color save when saving another color succeeds then emits that color`() = runTest {
+        val dataStore = colorDataStore()
+        dataStore.writeFailure = IOException("disk full")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeDefaultNoteColor().test {
+            assertEquals(null, awaitItem())
+            repository.setDefaultNoteColor(NoteColor.MINT)
+            assertEquals(NoteColor.MINT, awaitItem())
+            dataStore.writeFailure = null
+
+            val result = repository.setDefaultNoteColor(NoteColor.SAND)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(NoteColor.SAND, awaitItem())
+            assertEquals("sand", dataStore.preferences.value[defaultNoteColorKey])
+        }
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `given unexpected failure when saving color then propagates it`() = runTest {
+        val dataStore = colorDataStore()
+        dataStore.writeFailure = IllegalStateException("bug")
+
+        SettingsRepositoryImpl(dataStore).setDefaultNoteColor(NoteColor.MINT)
+    }
+
+    @Test
+    fun `given stored theme when saving color then theme is unchanged`() = runTest {
+        val dataStore = dataStore(storedValue = "light")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.setDefaultNoteColor(NoteColor.MINT)
+
+        repository.observeThemeMode().test {
+            assertEquals(ThemeMode.LIGHT, awaitItem())
+        }
+        assertEquals("light", dataStore.preferences.value[themeModeKey])
+    }
+
+    @Test
+    fun `given stored color when saving theme then color is unchanged`() = runTest {
+        val dataStore = colorDataStore(storedValue = "mint")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.setThemeMode(ThemeMode.LIGHT)
+
+        repository.observeDefaultNoteColor().test {
+            assertEquals(NoteColor.MINT, awaitItem())
+        }
+        assertEquals("mint", dataStore.preferences.value[defaultNoteColorKey])
+    }
+
+    private companion object {
+        val colorsByStorageValue = mapOf(
+            "none" to NoteColor.NONE,
+            "aqua" to NoteColor.AQUA,
+            "rose" to NoteColor.ROSE,
+            "vanilla" to NoteColor.VANILLA,
+            "lavender" to NoteColor.LAVENDER,
+            "mint" to NoteColor.MINT,
+            "peach" to NoteColor.PEACH,
+            "sand" to NoteColor.SAND,
+        )
     }
 }

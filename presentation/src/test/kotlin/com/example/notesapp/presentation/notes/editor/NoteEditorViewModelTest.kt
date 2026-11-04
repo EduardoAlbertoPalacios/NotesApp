@@ -23,9 +23,11 @@ import com.example.notesapp.domain.notes.RemoveNoteImageUseCase
 import com.example.notesapp.domain.notes.RestoreNoteUseCase
 import com.example.notesapp.domain.notes.SaveNoteUseCase
 import com.example.notesapp.domain.notes.TextFormat
+import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.presentation.MainDispatcherRule
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
+import com.example.notesapp.presentation.settings.FakeSettingsRepository
 import java.util.Locale
 import java.util.TimeZone
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,6 +52,7 @@ class NoteEditorViewModelTest {
 
     private val repository = InMemoryNoteRepository()
     private val imageStorage = FakeImageStorage()
+    private val settingsRepository = FakeSettingsRepository()
     private val dateFormatter = NoteDateFormatter(
         now = { NOW },
         locale = Locale.forLanguageTag("es-ES"),
@@ -65,7 +68,22 @@ class NoteEditorViewModelTest {
         updatedAt = NOW - 1_000,
     )
 
-    private fun createViewModel(noteId: Long? = null, category: String? = null) = NoteEditorViewModel(
+    /** Una nota nueva recibe ya su color predeterminado; así cada prueba empieza con la lectura resuelta. */
+    private suspend fun createViewModel(
+        noteId: Long? = null,
+        category: String? = null,
+        defaultColor: NoteColor? = NoteColor.DEFAULT,
+    ): NoteEditorViewModel {
+        val viewModel = buildViewModel(noteId, category)
+        if (noteId == null) {
+            settingsRepository.emitStoredDefaultNoteColor(defaultColor)
+            mainDispatcherRule.testDispatcher.scheduler.runCurrent()
+        }
+        return viewModel
+    }
+
+    /** Sin emitir el color predeterminado: la lectura queda pendiente hasta que la prueba lo emita. */
+    private fun buildViewModel(noteId: Long? = null, category: String? = null) = NoteEditorViewModel(
         savedStateHandle = SavedStateHandle(
             buildMap {
                 noteId?.let { put(NoteEditorViewModel.NOTE_ID_ARG, it) }
@@ -79,6 +97,7 @@ class NoteEditorViewModelTest {
         addNoteImages = AddNoteImagesUseCase(repository, imageStorage, TimeProvider { NOW }),
         removeNoteImage = RemoveNoteImageUseCase(repository, imageStorage),
         dateFormatter = dateFormatter,
+        getDefaultNoteColor = GetDefaultNoteColorUseCase(settingsRepository),
     )
 
     @Test
@@ -1920,6 +1939,163 @@ class NoteEditorViewModelTest {
             assertEquals("", viewModel.state.value.content.text)
             assertFalse(viewModel.state.value.canUndo)
         }
+
+    @Test
+    fun `given pending default color when new note created then stays loading until it arrives`() = runTest {
+        val viewModel = buildViewModel()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.isLoading)
+        assertFalse(viewModel.state.value.isNoteVisible)
+        assertTrue(viewModel.state.value.isNewNote)
+
+        settingsRepository.emitStoredDefaultNoteColor(NoteColor.MINT)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertFalse(state.isLoading)
+        assertTrue(state.isNoteVisible)
+        assertTrue(state.isNewNote)
+        assertEquals(NoteColor.MINT, state.color)
+    }
+
+    @Test
+    fun `given pending default color when new note has category then keeps it while loading`() = runTest {
+        val viewModel = buildViewModel(category = NoteCategory.WORK.name)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.isLoading)
+        assertEquals(NoteCategory.WORK, viewModel.state.value.category)
+    }
+
+    @Test
+    fun `given no stored default color when new note created then opens in aqua`() = runTest {
+        val viewModel = createViewModel(defaultColor = null)
+
+        assertEquals(NoteColor.AQUA, viewModel.state.value.color)
+        assertFalse(viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun `given no color as default when new note created then opens without color`() = runTest {
+        val viewModel = createViewModel(defaultColor = NoteColor.NONE)
+
+        assertEquals(NoteColor.NONE, viewModel.state.value.color)
+        assertFalse(viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun `given default color when new note is written then saves it with that color`() = runTest {
+        val viewModel = createViewModel(defaultColor = NoteColor.VANILLA)
+
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Ideas")))
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.VANILLA, repository.notes.values.single().color)
+    }
+
+    @Test
+    fun `given no color as default when new note is written then saves it without color`() = runTest {
+        val viewModel = createViewModel(defaultColor = NoteColor.NONE)
+
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Ideas")))
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.NONE, repository.notes.values.single().color)
+    }
+
+    @Test
+    fun `given default color when color picker opened on new note then marks it`() = runTest {
+        val viewModel = createViewModel(defaultColor = NoteColor.SAND)
+
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+
+        assertEquals(NoteColor.SAND, viewModel.state.value.pickerColor)
+    }
+
+    @Test
+    fun `given new note when other color applied then keeps it on save without changing default`() = runTest {
+        val viewModel = createViewModel(defaultColor = NoteColor.VANILLA)
+
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.PEACH))
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Ideas")))
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.PEACH, viewModel.state.value.color)
+        assertEquals(NoteColor.PEACH, repository.notes.values.single().color)
+        assertTrue(settingsRepository.savedDefaultNoteColors.isEmpty())
+    }
+
+    @Test
+    fun `given new note open when default color changes then keeps the color it opened with`() = runTest {
+        val viewModel = createViewModel(defaultColor = NoteColor.VANILLA)
+
+        settingsRepository.emitStoredDefaultNoteColor(NoteColor.MINT)
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.VANILLA, viewModel.state.value.color)
+    }
+
+    @Test
+    fun `given new note without text when back clicked then saves nothing and keeps default`() = runTest {
+        val viewModel = createViewModel(defaultColor = NoteColor.VANILLA)
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+
+        assertTrue(repository.notes.isEmpty())
+        assertEquals(0, repository.saveCount)
+        assertTrue(settingsRepository.savedDefaultNoteColors.isEmpty())
+    }
+
+    @Test
+    fun `given pending default color when saved note opened then loads without waiting for it`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = buildViewModel(existing.id)
+
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isLoading)
+        assertFalse(viewModel.state.value.isNewNote)
+        assertEquals(NoteColor.ROSE, viewModel.state.value.color)
+    }
+
+    @Test
+    fun `given other default color when saved note opened and edited then keeps its own color`() = runTest {
+        repository.notes[existing.id] = existing
+        settingsRepository.emitStoredDefaultNoteColor(NoteColor.MINT)
+        val viewModel = buildViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.ROSE, viewModel.state.value.color)
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("Nuevo texto")))
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.ROSE, repository.notes.getValue(existing.id).color)
+    }
+
+    @Test
+    fun `given saved note when other color applied then default color does not change`() = runTest {
+        repository.notes[existing.id] = existing
+        settingsRepository.emitStoredDefaultNoteColor(NoteColor.MINT)
+        val viewModel = buildViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.ColorButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.PickerColorSelected(NoteColor.SAND))
+        viewModel.onIntent(NoteEditorIntent.ColorApplied)
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.SAND, repository.notes.getValue(existing.id).color)
+        assertTrue(settingsRepository.savedDefaultNoteColors.isEmpty())
+    }
 
     /** Escribe [text] en el contenido letra a letra, con el cursor al final, como un teclado. */
     private fun NoteEditorViewModel.typeInContent(text: String) {

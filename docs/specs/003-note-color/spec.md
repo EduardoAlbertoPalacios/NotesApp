@@ -52,7 +52,7 @@ Cada nota ya tiene un color que se ve en su tarjeta de Mis notas, pero el usuari
 - **RF-21:** CUANDO el usuario vuelva a abrir una nota, EL SISTEMA mostrará el color con el que se guardó.
 
 ### Dónde se ve el color
-- **RF-22:** EL SISTEMA creará las notas nuevas con el color Cielo.
+- **RF-22:** EL SISTEMA creará las notas nuevas con el color predeterminado, que es Cielo salvo que el usuario elija otro (sustituido por la spec 007).
 - **RF-23:** EL SISTEMA pintará cada tarjeta de Mis notas con el color de su nota.
 - **RF-24:** DONDE la nota tenga un color distinto de «Sin color», EL SISTEMA pintará el fondo del editor con ese color.
 - **RF-25:** DONDE la nota tenga un color distinto de «Sin color», EL SISTEMA mostrará en oscuro los textos e íconos del editor que van sobre ese fondo.
@@ -90,7 +90,7 @@ Cada nota ya tiene un color que se ve en su tarjeta de Mis notas, pero el usuari
 - Cambiar el color de varias notas a la vez o desde el listado.
 - Aplicar colores al texto del contenido (solo a la nota entera).
 - Tema claro o adaptar el resto de la app al color de la nota (solo el editor y la tarjeta).
-- Elegir el color por defecto de las notas nuevas (siempre Cielo).
+- Elegir el color por defecto de las notas nuevas (lo cubre la spec 007).
 
 ## Criterios de finalización
 

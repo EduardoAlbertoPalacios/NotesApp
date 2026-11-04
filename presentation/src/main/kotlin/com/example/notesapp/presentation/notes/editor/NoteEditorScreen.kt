@@ -85,6 +85,7 @@ import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.AppColorsTheme
 import com.example.notesapp.presentation.notes.common.FormattedContentTransformation
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
+import com.example.notesapp.presentation.notes.common.ColorPickerTestTags
 import com.example.notesapp.presentation.notes.common.NoteSurfaceTheme
 import com.example.notesapp.presentation.notes.common.TaskTextStyle
 import com.example.notesapp.presentation.notes.common.asText
@@ -116,11 +117,11 @@ object NoteEditorTestTags {
     const val FORMAT_OPTION = "note_editor_format_"
     const val IMAGE = "note_editor_image_"
     const val REMOVE_IMAGE = "note_editor_remove_image_"
-    const val COLOR_SHEET = "note_editor_color_sheet"
-    const val COLOR_OPTION = "note_editor_color_"
-    const val COLOR_PREVIEW = "note_editor_color_preview"
-    const val COLOR_APPLY = "note_editor_color_apply"
-    const val COLOR_CLOSE = "note_editor_color_close"
+    const val COLOR_SHEET = ColorPickerTestTags.SHEET
+    const val COLOR_OPTION = ColorPickerTestTags.OPTION
+    const val COLOR_PREVIEW = ColorPickerTestTags.PREVIEW
+    const val COLOR_APPLY = ColorPickerTestTags.APPLY
+    const val COLOR_CLOSE = ColorPickerTestTags.CLOSE
 }
 
 @Composable

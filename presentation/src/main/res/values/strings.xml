@@ -94,7 +94,8 @@
     <string name="settings_theme_save_error">No se pudo guardar el tema</string>
     <string name="settings_default_color">Color predeterminado</string>
     <string name="settings_default_color_detail">Para tus nuevas notas</string>
-    <string name="settings_default_color_value">Cielo</string>
+    <string name="settings_default_color_preview_title">Nota nueva</string>
+    <string name="settings_default_color_save_error">No se pudo guardar el color predeterminado</string>
     <string name="settings_notes_view">Vista de notas</string>
     <string name="settings_notes_view_detail">Organiza tu pantalla de inicio</string>
     <string name="settings_notes_view_value">Cuadrícula</string>

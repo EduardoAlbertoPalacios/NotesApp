@@ -26,6 +26,7 @@ import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.domain.notes.UndoEdit
 import com.example.notesapp.domain.notes.UndoHistory
 import com.example.notesapp.domain.notes.UndoSnapshot
+import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -55,6 +57,7 @@ class NoteEditorViewModel @Inject constructor(
     private val addNoteImages: AddNoteImagesUseCase,
     private val removeNoteImage: RemoveNoteImageUseCase,
     private val dateFormatter: NoteDateFormatter,
+    private val getDefaultNoteColor: GetDefaultNoteColorUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NoteEditorUiState())
@@ -68,7 +71,7 @@ class NoteEditorViewModel @Inject constructor(
         id = Note.NEW_ID,
         title = "",
         content = "",
-        color = NoteColor.AQUA,
+        color = NoteColor.DEFAULT,
         isPinned = false,
         // Una nota nueva nace en la categoría del filtro activo del listado, si lo hay.
         category = savedStateHandle.get<String>(CATEGORY_ARG)
@@ -93,7 +96,8 @@ class NoteEditorViewModel @Inject constructor(
     init {
         val noteId = savedStateHandle.get<Long>(NOTE_ID_ARG) ?: Note.NEW_ID
         if (noteId == Note.NEW_ID) {
-            _state.update { it.copy(category = note.category) }
+            _state.update { it.copy(category = note.category, isLoading = true) }
+            loadDefaultColor()
         } else {
             load(noteId)
         }
@@ -128,6 +132,15 @@ class NoteEditorViewModel @Inject constructor(
             is NoteEditorIntent.FocusRequestHandled -> _state.update {
                 if (it.focusRequest?.id == intent.id) it.copy(focusRequest = null) else it
             }
+        }
+    }
+
+    /** La nota nueva se muestra al conocer su color: así no se ve otro un instante ni se escribe antes. */
+    private fun loadDefaultColor() {
+        viewModelScope.launch {
+            val color = getDefaultNoteColor().first()
+            note = note.copy(color = color)
+            _state.update { it.copy(isLoading = false, color = color) }
         }
     }
 
