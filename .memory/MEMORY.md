@@ -11,7 +11,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Búsqueda** (spec 001, PR #2), **formato de texto** (002, PR #3), **color de la nota** (003, PR #4) y **lista de tareas** (004, PR #5), en `main`.
 - **Deshacer** (spec 005, PR #6), en `main`.
 - **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
-- **Color predeterminado** (spec 007): implementado en `feat/default-note-color`, sin PR. Funcionan las filas Tema y Color predeterminado; las otras 5 van atenuadas.
+- **Color predeterminado** (spec 007): implementado en `feat/default-note-color`, PR #8 abierto. Funcionan las filas Tema y Color predeterminado; las otras 5 van atenuadas.
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
