@@ -10,7 +10,8 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
 - **Búsqueda** (spec 001, PR #2), **formato de texto** (002, PR #3), **color de la nota** (003, PR #4) y **lista de tareas** (004, PR #5), en `main`.
 - **Deshacer** (spec 005, PR #6), en `main`.
-- **Ajustes y tema claro/oscuro** (spec 006): implementada en `feat/settings-theme` y revisada frente a Figma, sin commit ni PR. API 30 queda pendiente por decisión del usuario (`tasks.md`). El tema se guarda con DataStore Preferences (elegido por el usuario, solo en `:data`). Solo funciona Tema; las otras 6 filas van atenuadas.
+- **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
+- **Color predeterminado** (spec 007): implementado en `feat/default-note-color`, sin PR. Funcionan las filas Tema y Color predeterminado; las otras 5 van atenuadas.
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
@@ -25,6 +26,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Imágenes: selector de fotos del sistema (sin permisos); se copian a `filesDir/note_images` porque el acceso a la original es temporal. Tabla `note_images` (FK con CASCADE). Borrar nota/imagen borra también el archivo. Agregar imagen actualiza la fecha de edición.
 - Tareas: líneas del contenido (texto plano) marcadas aparte como `ChecklistItem(line, isDone)` en `content_tasks` (`línea,estado;…`). Reglas en `NoteChecklist` (`:domain`); `onTextChanged` recibe el cursor para ubicar Intro/borrar/pegar. Editor: un solo campo; las casillas se dibujan encima con el `TextLayoutResult` y el texto deja hueco con `ParagraphStyle`. Tarjeta: casillas con `InlineTextContent`.
 - Deshacer: fotos completas de la nota (`UndoSnapshot`) en un historial del ViewModel (máx. 100, se pierde al salir); reglas en `NoteUndo`. Un carácter escrito/borrado se agrupa; espacio, `\n`, 1 s de pausa o mover el cursor cierran el paso; lo demás es paso propio. Título como `TextFieldValue` para restaurar el cursor. Deshacer hasta el estado de apertura recupera la fecha con `RestoreNoteUseCase`. Foco por estado (`FocusRequest` + `FocusRequestHandled`) para que no se repita al girar.
+- Color predeterminado: en `SettingsRepository` (DataStore), `NoteColor.DEFAULT` = Cielo. Hoja común `NoteColorPickerSheet` para editor y Ajustes. La nota nueva usa `isLoading` hasta leer el color, para no mostrar otro un instante. `NoteMappers` y las notas semilla siguen en `AQUA` a propósito.
 - Formato: el contenido sigue en texto plano y el formato va aparte como tramos `FormatSpan` en la columna `content_spans` (codificación propia `start,end,F;…`, sin dependencias). Reglas en `NoteFormatting` (`:domain`); el editor pinta con `VisualTransformation`. Los formatos activados sin escribir no se guardan ni cambian la fecha.
 
 ## Aprendizajes y errores a evitar
@@ -45,7 +47,6 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Spec 005: comprobar en un móvil con teclado en pantalla que escribir se agrupa por palabra (confirmar una sugerencia es paso propio).
 - Nota vaciada (a mano o deshaciendo) tras autoguardarse: `leave()` mira la última versión guardada y no la borra; vuelve a Mis notas con su texto anterior. Preexistente; candidato a spec.
 - Limitación conocida: con el contenido vacío, al crear la primera tarea el cursor queda bajo la casilla hasta escribir.
-- Spec 006: commit y PR.
 - Comprobar spec 006 en API 30 (ventana inicial, RF-40) y API 24-25 (barra de navegación en Claro).
 - Unificar el nombre de la app: el pie de Ajustes dice «Notas» y `app_name`, «NotesApp».
 - Candidato a spec: `allowBackup` y las reglas sin configurar podrían copiar las notas a la nube, frente al aviso «Tus notas se guardan en este dispositivo».
