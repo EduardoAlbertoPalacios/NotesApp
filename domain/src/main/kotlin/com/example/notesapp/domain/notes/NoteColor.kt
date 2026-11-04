@@ -10,4 +10,10 @@ enum class NoteColor {
     MINT,
     PEACH,
     SAND,
+    ;
+
+    companion object {
+        /** Color de las notas nuevas si el usuario no ha elegido otro. */
+        val DEFAULT = AQUA
+    }
 }

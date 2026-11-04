@@ -5,11 +5,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -33,14 +35,19 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
+import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.ThemeTestColors
 import com.example.notesapp.presentation.assertColorEquals
 import com.example.notesapp.presentation.containsColor
+import com.example.notesapp.presentation.dominantColor
+import com.example.notesapp.presentation.notes.common.ColorPickerTestTags
 import com.example.notesapp.presentation.textColor
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import org.junit.Assert.assertEquals
@@ -86,6 +93,13 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
                             SettingsIntent.ThemeRowClicked -> state.copy(isThemeSheetVisible = true)
                             SettingsIntent.ThemeSheetDismissed -> state.copy(isThemeSheetVisible = false)
                             SettingsIntent.BackClicked -> state
+                            SettingsIntent.DefaultColorRowClicked -> state.copy(defaultColorPicker = state.defaultNoteColor)
+                            is SettingsIntent.DefaultColorOptionSelected -> state.copy(defaultColorPicker = intent.color)
+                            SettingsIntent.DefaultColorApplied -> state.copy(
+                                defaultNoteColor = state.defaultColorPicker ?: state.defaultNoteColor,
+                                defaultColorPicker = null,
+                            )
+                            SettingsIntent.DefaultColorPickerDismissed -> state.copy(defaultColorPicker = null)
                         }
                     },
                 )
@@ -130,6 +144,7 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         setContent()
 
         row(SettingsTestTags.THEME_ROW).assert(hasText(string(R.string.settings_theme)))
+        row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(R.string.settings_default_color)))
         disabledRowDescriptions.forEach { (tag, description) ->
             row(tag).assertContentDescriptionEquals(description)
         }
@@ -326,7 +341,18 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
             R.string.settings_theme_light to "Claro",
             R.string.settings_theme_dark to "Oscuro",
             R.string.settings_default_color to "Color predeterminado",
-            R.string.settings_default_color_value to "Cielo",
+            R.string.settings_default_color_detail to "Para tus nuevas notas",
+            R.string.settings_default_color_preview_title to "Nota nueva",
+            R.string.settings_default_color_save_error to "No se pudo guardar el color predeterminado",
+            R.string.note_color_none to "Sin color",
+            R.string.note_color_aqua to "Cielo",
+            R.string.note_color_rose to "Rosa",
+            R.string.note_color_vanilla to "Vainilla",
+            R.string.note_color_lavender to "Lavanda",
+            R.string.note_color_mint to "Menta",
+            R.string.note_color_peach to "Melocotón",
+            R.string.note_color_sand to "Arena",
+            R.string.note_color_apply to "Aplicar color",
             R.string.settings_notes_view to "Vista de notas",
             R.string.settings_notes_view_value to "Cuadrícula",
             R.string.settings_auto_save to "Guardado automático",
@@ -368,13 +394,341 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         )
     }
 
+    @Test
+    fun given_default_color_when_displayed_then_row_is_enabled_with_description_and_color_name() {
+        setContent(SettingsUiState(themeMode = activeMode, defaultNoteColor = NoteColor.MINT))
+
+        row(SettingsTestTags.DEFAULT_COLOR_ROW)
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assert(hasText(string(R.string.settings_default_color)))
+            .assert(hasText(string(R.string.settings_default_color_detail)))
+            .assert(hasText(string(R.string.note_color_mint)))
+    }
+
+    @Test
+    fun given_each_default_color_when_displayed_then_row_shows_its_name() {
+        var state by mutableStateOf(SettingsUiState(themeMode = activeMode))
+        composeRule.setContent {
+            NotesAppTheme(darkTheme = darkTheme) {
+                SettingsScreen(state = state, appVersion = APP_VERSION, onIntent = {})
+            }
+        }
+
+        colorLabels.forEach { (color, labelRes) ->
+            state = state.copy(defaultNoteColor = color)
+
+            row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(labelRes)))
+        }
+    }
+
+    @Test
+    fun given_theme_when_displayed_then_default_color_value_is_gray_and_regular() {
+        setContent()
+
+        val value = composeRule.onNode(
+            hasText(string(R.string.note_color_aqua)) and hasAnyAncestor(hasTestTag(SettingsTestTags.DEFAULT_COLOR_ROW)),
+            useUnmergedTree = true,
+        )
+
+        assertColorEquals(
+            "Valor de la fila Color predeterminado",
+            if (darkTheme) ThemeTestColors.DarkSecondaryText else ThemeTestColors.LightSecondaryText,
+            value.textColor(),
+        )
+        assertEquals(FontWeight.Normal, value.textFontWeight())
+    }
+
+    @Test
+    fun given_default_color_row_when_clicked_then_sends_row_clicked() {
+        setContent()
+
+        row(SettingsTestTags.DEFAULT_COLOR_ROW).performClick()
+
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.DefaultColorRowClicked), intents)
+    }
+
+    @Test
+    fun given_closed_picker_state_when_displayed_then_color_sheet_does_not_exist() {
+        setContent()
+
+        row(ColorPickerTestTags.SHEET).assertDoesNotExist()
+    }
+
+    @Test
+    fun given_stateful_screen_when_default_color_row_clicked_then_opens_sheet_with_current_color_selected() {
+        setStatefulContent(SettingsUiState(themeMode = activeMode, defaultNoteColor = NoteColor.SAND))
+
+        row(SettingsTestTags.DEFAULT_COLOR_ROW).performClick()
+
+        row(ColorPickerTestTags.SHEET).assertIsDisplayed()
+        colorOption(NoteColor.SAND).assertIsSelected()
+    }
+
+    @Test
+    fun given_open_picker_when_displayed_then_sheet_shows_title_description_and_apply() {
+        setContent(openPickerState())
+
+        row(ColorPickerTestTags.SHEET).assertIsDisplayed()
+        composeRule.onNode(hasText(string(R.string.settings_default_color)) and inColorSheet).assertIsDisplayed()
+        composeRule.onNode(hasText(string(R.string.settings_default_color_detail)) and inColorSheet).assertIsDisplayed()
+        composeRule.onNode(hasText(string(R.string.note_editor_toolbar_color)) and inColorSheet).assertDoesNotExist()
+        composeRule.onNode(hasText(string(R.string.note_color_sheet_description)) and inColorSheet).assertDoesNotExist()
+        row(ColorPickerTestTags.APPLY).assertTextEquals(string(R.string.note_color_apply))
+    }
+
+    @Test
+    fun given_open_picker_when_displayed_then_eight_options_follow_spec_order_in_two_rows_of_four() {
+        setContent(openPickerState())
+
+        composeRule.onAllNodes(hasRole(Role.RadioButton) and inColorSheet).assertCountEquals(colorLabels.size)
+        val bounds = colorLabels.keys.map { colorOption(it).getUnclippedBoundsInRoot() }
+
+        val (firstRow, secondRow) = bounds.chunked(4)
+        listOf(firstRow, secondRow).forEach { boundsRow ->
+            assertTrue(boundsRow.all { it.top == boundsRow.first().top })
+            assertTrue(boundsRow.zipWithNext().all { (left, right) -> left.right <= right.left })
+        }
+        assertTrue(firstRow.first().bottom <= secondRow.first().top)
+    }
+
+    @Test
+    fun given_open_picker_when_displayed_then_options_are_labelled_radio_buttons() {
+        setContent(openPickerState())
+
+        colorLabels.forEach { (color, labelRes) ->
+            colorOption(color)
+                .assertIsDisplayed()
+                .assertTextEquals(string(labelRes))
+                .assert(hasRole(Role.RadioButton))
+                .assertHasClickAction()
+        }
+    }
+
+    @Test
+    fun given_open_picker_when_displayed_then_only_picked_option_is_selected() {
+        setContent(openPickerState(picked = NoteColor.LAVENDER))
+
+        colorOption(NoteColor.LAVENDER).assertIsSelected()
+        colorLabels.keys.filter { it != NoteColor.LAVENDER }.forEach { color ->
+            colorOption(color).assertIsNotSelected()
+        }
+    }
+
+    @Test
+    fun given_no_color_picked_when_displayed_then_no_color_option_is_selected() {
+        setContent(openPickerState(picked = NoteColor.NONE))
+
+        colorOption(NoteColor.NONE).assertIsSelected()
+        colorOption(NoteColor.AQUA).assertIsNotSelected()
+    }
+
+    @Test
+    fun given_open_picker_when_displayed_then_picked_label_is_highlighted() {
+        setContent(openPickerState(picked = NoteColor.LAVENDER))
+
+        assertColorEquals(
+            "Elegida",
+            if (darkTheme) ThemeTestColors.NoteContainers.getValue(NoteColor.AQUA) else ThemeTestColors.LightAccent,
+            colorOptionLabel(NoteColor.LAVENDER).textColor(),
+        )
+        assertColorEquals(
+            "Otra",
+            if (darkTheme) ThemeTestColors.DarkSecondaryText else ThemeTestColors.LightSecondaryText,
+            colorOptionLabel(NoteColor.ROSE).textColor(),
+        )
+    }
+
+    @Test
+    fun given_open_picker_when_options_clicked_then_sends_each_selection() {
+        setContent(openPickerState())
+
+        colorOption(NoteColor.ROSE).performClick()
+        colorOption(NoteColor.NONE).performClick()
+
+        assertEquals(
+            listOf(
+                SettingsIntent.DefaultColorOptionSelected(NoteColor.ROSE),
+                SettingsIntent.DefaultColorOptionSelected(NoteColor.NONE),
+            ),
+            intents,
+        )
+    }
+
+    @Test
+    fun given_stateful_picker_when_option_clicked_then_selection_and_caption_follow_it() {
+        setStatefulContent(openPickerState(picked = NoteColor.AQUA))
+
+        colorOption(NoteColor.PEACH).performClick()
+
+        colorOption(NoteColor.PEACH).assertIsSelected()
+        colorOption(NoteColor.AQUA).assertIsNotSelected()
+        previewCaption(R.string.note_color_peach).assertIsDisplayed()
+        previewCaption(R.string.note_color_aqua).assertDoesNotExist()
+    }
+
+    @Test
+    fun given_open_picker_when_displayed_then_preview_shows_new_note_title_and_color_caption() {
+        setContent(openPickerState(picked = NoteColor.NONE))
+
+        composeRule.onNode(
+            hasText(string(R.string.settings_default_color_preview_title)) and inColorPreview,
+        ).assertIsDisplayed()
+        composeRule.onNode(hasText(string(R.string.note_color_preview_untitled)) and inColorPreview).assertDoesNotExist()
+        previewCaption(R.string.note_color_none).assertIsDisplayed()
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_each_picked_color_when_displayed_then_preview_uses_it() {
+        var state by mutableStateOf(openPickerState())
+        composeRule.setContent {
+            NotesAppTheme(darkTheme = darkTheme) {
+                SettingsScreen(state = state, appVersion = APP_VERSION, onIntent = {})
+            }
+        }
+
+        ThemeTestColors.NoteContainers.forEach { (color, expected) ->
+            state = state.copy(defaultColorPicker = color)
+            composeRule.waitForIdle()
+
+            assertColorEquals("Vista previa $color", expected, row(ColorPickerTestTags.PREVIEW).captureToImage().dominantColor())
+        }
+    }
+
+    @Test
+    fun given_open_picker_when_apply_clicked_then_sends_applied_closes_and_row_shows_new_color() {
+        setStatefulContent(openPickerState(picked = NoteColor.AQUA))
+        colorOption(NoteColor.MINT).performClick()
+
+        row(ColorPickerTestTags.APPLY).performClick()
+        awaitIntent(SettingsIntent.DefaultColorApplied)
+
+        assertEquals(
+            listOf(SettingsIntent.DefaultColorOptionSelected(NoteColor.MINT), SettingsIntent.DefaultColorApplied),
+            intents,
+        )
+        row(ColorPickerTestTags.SHEET).assertDoesNotExist()
+        row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(R.string.note_color_mint)))
+    }
+
+    @Test
+    fun given_same_color_when_apply_clicked_then_closes_and_row_does_not_change() {
+        setStatefulContent(openPickerState(picked = NoteColor.AQUA))
+
+        row(ColorPickerTestTags.APPLY).performClick()
+        awaitIntent(SettingsIntent.DefaultColorApplied)
+
+        row(ColorPickerTestTags.SHEET).assertDoesNotExist()
+        row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(R.string.note_color_aqua)))
+    }
+
+    @Test
+    fun given_changed_option_when_close_clicked_then_sends_dismissed_closes_and_keeps_color() {
+        setStatefulContent(openPickerState(picked = NoteColor.AQUA))
+        colorOption(NoteColor.MINT).performClick()
+
+        row(ColorPickerTestTags.CLOSE).performClick()
+        awaitIntent(SettingsIntent.DefaultColorPickerDismissed)
+
+        assertEquals(
+            listOf(SettingsIntent.DefaultColorOptionSelected(NoteColor.MINT), SettingsIntent.DefaultColorPickerDismissed),
+            intents,
+        )
+        row(ColorPickerTestTags.SHEET).assertDoesNotExist()
+        row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(R.string.note_color_aqua)))
+    }
+
+    @Test
+    fun given_changed_option_when_sheet_swiped_away_then_sends_dismissed_and_keeps_color() {
+        setStatefulContent(openPickerState(picked = NoteColor.AQUA))
+        colorOption(NoteColor.MINT).performClick()
+
+        row(ColorPickerTestTags.SHEET).performTouchInput { swipeDown() }
+        awaitIntent(SettingsIntent.DefaultColorPickerDismissed)
+
+        row(ColorPickerTestTags.SHEET).assertDoesNotExist()
+        row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(R.string.note_color_aqua)))
+    }
+
+    @Test
+    fun given_picker_closed_without_applying_when_reopened_then_marks_current_color() {
+        setStatefulContent(openPickerState(picked = NoteColor.AQUA))
+        colorOption(NoteColor.MINT).performClick()
+        row(ColorPickerTestTags.CLOSE).performClick()
+        awaitIntent(SettingsIntent.DefaultColorPickerDismissed)
+
+        row(SettingsTestTags.DEFAULT_COLOR_ROW).performClick()
+
+        colorOption(NoteColor.AQUA).assertIsSelected()
+        colorOption(NoteColor.MINT).assertIsNotSelected()
+    }
+
+    @Test
+    fun given_open_picker_when_displayed_then_close_button_has_accessible_label() {
+        setContent(openPickerState())
+
+        row(ColorPickerTestTags.CLOSE)
+            .assertContentDescriptionEquals(string(R.string.note_color_close))
+            .assertHasClickAction()
+    }
+
+    @Test
+    fun given_default_color_elements_when_displayed_then_touch_targets_are_at_least_44_dp() {
+        setContent(openPickerState())
+
+        val nodes = listOf(row(SettingsTestTags.DEFAULT_COLOR_ROW), row(ColorPickerTestTags.CLOSE)) +
+            colorLabels.keys.map { colorOption(it) }
+        nodes.forEach { node ->
+            node.assertWidthIsAtLeast(MIN_TOUCH_TARGET).assertHeightIsAtLeast(MIN_TOUCH_TARGET)
+        }
+    }
+
+    private fun openPickerState(picked: NoteColor = NoteColor.AQUA) =
+        SettingsUiState(themeMode = activeMode, defaultColorPicker = picked)
+
+    private fun awaitIntent(intent: SettingsIntent) {
+        composeRule.waitUntil(timeoutMillis = SHEET_TIMEOUT_MS) { intent in intents }
+        composeRule.waitForIdle()
+    }
+
+    private fun colorOption(color: NoteColor) = row(ColorPickerTestTags.OPTION + color.name)
+
+    private fun colorOptionLabel(color: NoteColor) = composeRule.onNode(
+        hasText(string(colorLabels.getValue(color))) and hasAnyAncestor(hasTestTag(ColorPickerTestTags.OPTION + color.name)),
+        useUnmergedTree = true,
+    )
+
+    private fun previewCaption(labelRes: Int) = composeRule.onNode(
+        hasText(string(R.string.note_color_preview_caption, string(labelRes))) and inColorPreview,
+    )
+
+    private val inColorSheet = hasAnyAncestor(hasTestTag(ColorPickerTestTags.SHEET))
+
+    private val inColorPreview = hasAnyAncestor(hasTestTag(ColorPickerTestTags.PREVIEW))
+
+    private fun hasRole(role: Role) = SemanticsMatcher.expectValue(SemanticsProperties.Role, role)
+
+    private fun SemanticsNodeInteraction.textFontWeight(): FontWeight? {
+        val results = mutableListOf<TextLayoutResult>()
+        fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+        return results.single().layoutInput.style.fontWeight
+    }
+
+    /** En el orden de la spec (RF-5), escrito aparte del enum para detectar un cambio de orden. */
+    private val colorLabels = linkedMapOf(
+        NoteColor.NONE to R.string.note_color_none,
+        NoteColor.AQUA to R.string.note_color_aqua,
+        NoteColor.ROSE to R.string.note_color_rose,
+        NoteColor.VANILLA to R.string.note_color_vanilla,
+        NoteColor.LAVENDER to R.string.note_color_lavender,
+        NoteColor.MINT to R.string.note_color_mint,
+        NoteColor.PEACH to R.string.note_color_peach,
+        NoteColor.SAND to R.string.note_color_sand,
+    )
+
     private val disabledRowDescriptions
         get() = mapOf(
-            SettingsTestTags.DEFAULT_COLOR_ROW to description(
-                R.string.settings_default_color,
-                R.string.settings_default_color_detail,
-                R.string.settings_default_color_value,
-            ),
             SettingsTestTags.NOTES_VIEW_ROW to description(
                 R.string.settings_notes_view,
                 R.string.settings_notes_view_detail,

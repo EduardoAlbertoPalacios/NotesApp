@@ -1,6 +1,7 @@
 package com.example.notesapp.presentation.settings
 
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.SettingsRepository
 import com.example.notesapp.domain.settings.ThemeMode
@@ -13,8 +14,13 @@ class FakeSettingsRepository : SettingsRepository {
     private val themeMode = MutableSharedFlow<ThemeMode?>(replay = 1)
     val savedModes = mutableListOf<ThemeMode>()
     var saveResult: AppResult<Unit, SettingsError> = AppResult.Success(Unit)
+    private val defaultNoteColor = MutableSharedFlow<NoteColor?>(replay = 1)
+    val savedDefaultNoteColors = mutableListOf<NoteColor>()
+    var defaultNoteColorSaveResult: AppResult<Unit, SettingsError> = AppResult.Success(Unit)
 
     suspend fun emitStored(mode: ThemeMode?) = themeMode.emit(mode)
+
+    suspend fun emitStoredDefaultNoteColor(color: NoteColor?) = defaultNoteColor.emit(color)
 
     override fun observeThemeMode(): Flow<ThemeMode?> = themeMode
 
@@ -22,5 +28,13 @@ class FakeSettingsRepository : SettingsRepository {
         savedModes += mode
         themeMode.emit(mode)
         return saveResult
+    }
+
+    override fun observeDefaultNoteColor(): Flow<NoteColor?> = defaultNoteColor
+
+    override suspend fun setDefaultNoteColor(color: NoteColor): AppResult<Unit, SettingsError> {
+        savedDefaultNoteColors += color
+        defaultNoteColor.emit(color)
+        return defaultNoteColorSaveResult
     }
 }

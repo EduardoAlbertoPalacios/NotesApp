@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.SettingsRepository
 import com.example.notesapp.domain.settings.ThemeMode
@@ -18,7 +19,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
-/** Singleton porque [chosenThemeMode] debe ser el mismo para toda la sesión. */
+/** Singleton porque [chosenThemeMode] y [chosenDefaultNoteColor] deben ser los mismos para toda la sesión. */
 @Singleton
 internal class SettingsRepositoryImpl @Inject constructor(
     private val dataStore: DataStore<Preferences>,
@@ -29,6 +30,9 @@ internal class SettingsRepositoryImpl @Inject constructor(
      * aunque no se pueda guardar, y también si una lectura fallida ya terminó de observar el archivo.
      */
     private val chosenThemeMode = MutableStateFlow<ThemeMode?>(null)
+
+    /** Último color predeterminado elegido en esta sesión; tiene prioridad sobre lo leído, como [chosenThemeMode]. */
+    private val chosenDefaultNoteColor = MutableStateFlow<NoteColor?>(null)
 
     override fun observeThemeMode(): Flow<ThemeMode?> =
         combine(storedThemeMode(), chosenThemeMode) { stored, chosen -> chosen ?: stored }
@@ -44,12 +48,32 @@ internal class SettingsRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun observeDefaultNoteColor(): Flow<NoteColor?> =
+        combine(storedDefaultNoteColor(), chosenDefaultNoteColor) { stored, chosen -> chosen ?: stored }
+            .distinctUntilChanged()
+
+    override suspend fun setDefaultNoteColor(color: NoteColor): AppResult<Unit, SettingsError> {
+        chosenDefaultNoteColor.value = color
+        return try {
+            dataStore.edit { it[DEFAULT_NOTE_COLOR] = color.toStorageValue() }
+            AppResult.Success(Unit)
+        } catch (_: IOException) {
+            AppResult.Error(SettingsError.Storage)
+        }
+    }
+
     private fun storedThemeMode(): Flow<ThemeMode?> =
         dataStore.data
             .map { it[THEME_MODE].toThemeModeOrNull() }
             .catch { error -> if (error is IOException) emit(null) else throw error }
 
+    private fun storedDefaultNoteColor(): Flow<NoteColor?> =
+        dataStore.data
+            .map { it[DEFAULT_NOTE_COLOR].toNoteColorOrNull() }
+            .catch { error -> if (error is IOException) emit(null) else throw error }
+
     private companion object {
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val DEFAULT_NOTE_COLOR = stringPreferencesKey("default_note_color")
     }
 }

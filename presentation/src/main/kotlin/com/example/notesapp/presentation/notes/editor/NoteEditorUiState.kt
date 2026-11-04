@@ -30,7 +30,7 @@ data class NoteEditorUiState(
     val isContentFocused: Boolean = false,
     val isPinned: Boolean = false,
     val category: NoteCategory? = null,
-    val color: NoteColor = NoteColor.AQUA,
+    val color: NoteColor = NoteColor.DEFAULT,
     /** Opción elegida en el selector de color, aún sin aplicar; nula con el selector cerrado. */
     val pickerColor: NoteColor? = null,
     val images: List<NoteImage> = emptyList(),

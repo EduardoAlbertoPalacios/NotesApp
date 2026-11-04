@@ -23,6 +23,7 @@ fun SettingsRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val saveErrorMessage = stringResource(R.string.settings_theme_save_error)
+    val defaultColorErrorMessage = stringResource(R.string.settings_default_color_save_error)
     val currentOnNavigateBack by rememberUpdatedState(onNavigateBack)
 
     LaunchedEffect(viewModel) {
@@ -31,6 +32,7 @@ fun SettingsRoute(
                 SettingsEffect.NavigateBack -> currentOnNavigateBack()
                 // En su propia corrutina: esperar al aviso retrasaría el siguiente efecto, como volver.
                 SettingsEffect.ShowThemeSaveError -> launch { snackbarHostState.showSnackbar(saveErrorMessage) }
+                SettingsEffect.ShowDefaultColorSaveError -> launch { snackbarHostState.showSnackbar(defaultColorErrorMessage) }
             }
         }
     }
