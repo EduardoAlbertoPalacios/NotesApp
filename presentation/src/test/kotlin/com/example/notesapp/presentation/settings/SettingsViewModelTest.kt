@@ -4,8 +4,11 @@ import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
+import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.GetThemeModeUseCase
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SetDefaultNoteColorUseCase
+import com.example.notesapp.domain.settings.SetNotesViewUseCase
 import com.example.notesapp.domain.settings.SetThemeModeUseCase
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.ThemeMode
@@ -30,6 +33,8 @@ class SettingsViewModelTest {
         SetThemeModeUseCase(repository),
         GetDefaultNoteColorUseCase(repository),
         SetDefaultNoteColorUseCase(repository),
+        GetNotesViewUseCase(repository),
+        SetNotesViewUseCase(repository),
     )
 
     private suspend fun createViewModelWithTheme(mode: ThemeMode?): SettingsViewModel {
@@ -39,6 +44,11 @@ class SettingsViewModelTest {
 
     private suspend fun createViewModelWithDefaultColor(color: NoteColor?): SettingsViewModel {
         repository.emitStoredDefaultNoteColor(color)
+        return createViewModel()
+    }
+
+    private suspend fun createViewModelWithNotesView(view: NotesView?): SettingsViewModel {
+        repository.emitStoredNotesView(view)
         return createViewModel()
     }
 
@@ -463,5 +473,197 @@ class SettingsViewModelTest {
 
         assertEquals(NoteColor.ROSE, viewModel.state.value.defaultColorPicker)
         assertEquals(ThemeMode.LIGHT, viewModel.state.value.themeMode)
+    }
+
+    @Test
+    fun `given no notes view emission yet when created then state has grid and closed sheet`() {
+        val viewModel = createViewModel()
+
+        assertEquals(NotesView.GRID, viewModel.state.value.notesView)
+        assertFalse(viewModel.state.value.isNotesViewSheetVisible)
+    }
+
+    @Test
+    fun `given stored notes view when created then state shows it`() = runTest {
+        val viewModel = createViewModelWithNotesView(NotesView.LIST)
+
+        viewModel.state.test {
+            assertEquals(NotesView.LIST, awaitItem().notesView)
+        }
+    }
+
+    @Test
+    fun `given repository without notes view when created then state shows grid`() = runTest {
+        val viewModel = createViewModelWithNotesView(null)
+
+        viewModel.state.test {
+            assertEquals(NotesView.GRID, awaitItem().notesView)
+        }
+    }
+
+    @Test
+    fun `given stored notes view when it changes elsewhere then state follows it`() = runTest {
+        val viewModel = createViewModelWithNotesView(NotesView.GRID)
+
+        viewModel.state.test {
+            assertEquals(NotesView.GRID, awaitItem().notesView)
+
+            repository.emitStoredNotesView(NotesView.LIST)
+
+            assertEquals(NotesView.LIST, awaitItem().notesView)
+        }
+    }
+
+    @Test
+    fun `given closed sheet when notes view row clicked then opens sheet without changing view`() = runTest {
+        val viewModel = createViewModelWithNotesView(NotesView.LIST)
+
+        viewModel.onIntent(SettingsIntent.NotesViewRowClicked)
+
+        assertEquals(SettingsUiState(notesView = NotesView.LIST, isNotesViewSheetVisible = true), viewModel.state.value)
+        assertTrue(repository.savedNotesViews.isEmpty())
+    }
+
+    @Test
+    fun `given open notes view sheet when dismissed then closes it without changing or saving view`() = runTest {
+        val viewModel = createViewModelWithNotesView(NotesView.LIST)
+        viewModel.onIntent(SettingsIntent.NotesViewRowClicked)
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.NotesViewSheetDismissed)
+
+            expectNoEvents()
+        }
+
+        assertEquals(SettingsUiState(notesView = NotesView.LIST, isNotesViewSheetVisible = false), viewModel.state.value)
+        assertTrue(repository.savedNotesViews.isEmpty())
+    }
+
+    @Test
+    fun `given other notes view when selected then saves it and state reflects it without effects`() = runTest {
+        val viewModel = createViewModelWithNotesView(NotesView.GRID)
+
+        viewModel.effects.test {
+            viewModel.state.test {
+                assertEquals(NotesView.GRID, awaitItem().notesView)
+
+                viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+
+                assertEquals(NotesView.LIST, awaitItem().notesView)
+            }
+            expectNoEvents()
+        }
+        assertEquals(listOf(NotesView.LIST), repository.savedNotesViews)
+    }
+
+    @Test
+    fun `given active notes view when selected again then does not save nor change anything`() = runTest {
+        repository.notesViewSaveResult = AppResult.Error(SettingsError.Storage)
+        val viewModel = createViewModelWithNotesView(NotesView.LIST)
+
+        viewModel.effects.test {
+            viewModel.state.test {
+                val initial = awaitItem()
+
+                viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+
+                assertEquals(initial, viewModel.state.value)
+                expectNoEvents()
+            }
+            expectNoEvents()
+        }
+        assertTrue(repository.savedNotesViews.isEmpty())
+    }
+
+    @Test
+    fun `given save fails when notes view selected then emits its error and keeps chosen view`() = runTest {
+        repository.notesViewSaveResult = AppResult.Error(SettingsError.Storage)
+        val viewModel = createViewModelWithNotesView(NotesView.GRID)
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+
+            assertEquals(SettingsEffect.ShowNotesViewSaveError, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(NotesView.LIST, viewModel.state.value.notesView)
+    }
+
+    @Test
+    fun `given open sheet when other notes view selected then sheet stays open until dismissed`() = runTest {
+        val viewModel = createViewModelWithNotesView(NotesView.GRID)
+        viewModel.onIntent(SettingsIntent.NotesViewRowClicked)
+
+        viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+
+        assertEquals(SettingsUiState(notesView = NotesView.LIST, isNotesViewSheetVisible = true), viewModel.state.value)
+
+        viewModel.onIntent(SettingsIntent.NotesViewSheetDismissed)
+
+        assertEquals(SettingsUiState(notesView = NotesView.LIST, isNotesViewSheetVisible = false), viewModel.state.value)
+    }
+
+    @Test
+    fun `given open notes view sheet when state is collected again then sheet is still open with same view`() = runTest {
+        val viewModel = createViewModelWithNotesView(NotesView.LIST)
+        viewModel.onIntent(SettingsIntent.NotesViewRowClicked)
+        viewModel.state.test {
+            awaitItem()
+        }
+
+        viewModel.state.test {
+            assertEquals(SettingsUiState(notesView = NotesView.LIST, isNotesViewSheetVisible = true), awaitItem())
+        }
+    }
+
+    @Test
+    fun `given notes view save fails when theme and color also change then only notes view error is emitted`() = runTest {
+        repository.notesViewSaveResult = AppResult.Error(SettingsError.Storage)
+        repository.emitStored(ThemeMode.DARK)
+        repository.emitStoredDefaultNoteColor(NoteColor.LAVENDER)
+        val viewModel = createViewModelWithNotesView(NotesView.GRID)
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.ThemeSelected(ThemeMode.LIGHT))
+            viewModel.onIntent(SettingsIntent.DefaultColorRowClicked)
+            viewModel.onIntent(SettingsIntent.DefaultColorOptionSelected(NoteColor.ROSE))
+            viewModel.onIntent(SettingsIntent.DefaultColorApplied)
+            viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+
+            assertEquals(SettingsEffect.ShowNotesViewSaveError, awaitItem())
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given theme save fails when notes view also changes then only theme error is emitted`() = runTest {
+        repository.saveResult = AppResult.Error(SettingsError.Storage)
+        repository.emitStored(ThemeMode.DARK)
+        val viewModel = createViewModelWithNotesView(NotesView.GRID)
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+            viewModel.onIntent(SettingsIntent.ThemeSelected(ThemeMode.LIGHT))
+
+            assertEquals(SettingsEffect.ShowThemeSaveError, awaitItem())
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given color save fails when notes view also changes then only color error is emitted`() = runTest {
+        repository.defaultNoteColorSaveResult = AppResult.Error(SettingsError.Storage)
+        repository.emitStoredDefaultNoteColor(NoteColor.LAVENDER)
+        val viewModel = createViewModelWithNotesView(NotesView.GRID)
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+            viewModel.onIntent(SettingsIntent.DefaultColorRowClicked)
+            viewModel.onIntent(SettingsIntent.DefaultColorOptionSelected(NoteColor.ROSE))
+            viewModel.onIntent(SettingsIntent.DefaultColorApplied)
+
+            assertEquals(SettingsEffect.ShowDefaultColorSaveError, awaitItem())
+            expectNoEvents()
+        }
     }
 }

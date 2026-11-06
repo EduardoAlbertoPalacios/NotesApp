@@ -8,10 +8,9 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Editor** (`presentation/notes/editor`, Figma `4:1656`): crear, editar, fijar y eliminar; contenido con negrita, subrayado y tachado.
 - **Categorías** Trabajo / Personal: se eligen en el editor (sección "Categoría", Figma `14:4`) y filtran el listado.
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
-- **Búsqueda** (spec 001, PR #2), **formato de texto** (002, PR #3), **color de la nota** (003, PR #4) y **lista de tareas** (004, PR #5), en `main`.
-- **Deshacer** (spec 005, PR #6), en `main`.
+- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005) y color predeterminado (007, PR #8).
 - **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
-- **Color predeterminado** (spec 007): implementado en `feat/default-note-color`, PR #8 abierto. Funcionan las filas Tema y Color predeterminado; las otras 5 van atenuadas.
+- **Vista de notas** (spec 008): implementada en `feat/notes-view`, PR #9 abierto. Funcionan las filas Tema, Color predeterminado y Vista de notas; las otras 4 van atenuadas.
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
@@ -27,6 +26,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Tareas: líneas del contenido (texto plano) marcadas aparte como `ChecklistItem(line, isDone)` en `content_tasks` (`línea,estado;…`). Reglas en `NoteChecklist` (`:domain`); `onTextChanged` recibe el cursor para ubicar Intro/borrar/pegar. Editor: un solo campo; las casillas se dibujan encima con el `TextLayoutResult` y el texto deja hueco con `ParagraphStyle`. Tarjeta: casillas con `InlineTextContent`.
 - Deshacer: fotos completas de la nota (`UndoSnapshot`) en un historial del ViewModel (máx. 100, se pierde al salir); reglas en `NoteUndo`. Un carácter escrito/borrado se agrupa; espacio, `\n`, 1 s de pausa o mover el cursor cierran el paso; lo demás es paso propio. Título como `TextFieldValue` para restaurar el cursor. Deshacer hasta el estado de apertura recupera la fecha con `RestoreNoteUseCase`. Foco por estado (`FocusRequest` + `FocusRequestHandled`) para que no se repita al girar.
 - Color predeterminado: en `SettingsRepository` (DataStore), `NoteColor.DEFAULT` = Cielo. Hoja común `NoteColorPickerSheet` para editor y Ajustes. La nota nueva usa `isLoading` hasta leer el color, para no mostrar otro un instante. `NoteMappers` y las notas semilla siguen en `AQUA` a propósito.
+- Vista de notas: en `SettingsRepository`; `NotesView.DEFAULT` = Cuadrícula. Mis notas usa un solo `LazyVerticalStaggeredGrid` con 1 o 2 columnas. `isLoading` no termina hasta tener notas y vista. Tareas seguidas: `buildCardContent(flowTasks)` marca con `TASK_BREAK` y `wrapTasks` decide los cortes midiendo.
 - Formato: el contenido sigue en texto plano y el formato va aparte como tramos `FormatSpan` en la columna `content_spans` (codificación propia `start,end,F;…`, sin dependencias). Reglas en `NoteFormatting` (`:domain`); el editor pinta con `VisualTransformation`. Los formatos activados sin escribir no se guardan ni cambian la fecha.
 
 ## Aprendizajes y errores a evitar
@@ -40,14 +40,14 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Compose 1.10: un párrafo que termina en `\n` dibuja una línea vacía de más y cada párrafo recorta su altura (`Trim`). Para la sangría por línea: `\n`→`\u200B` en la transformación y `LineHeightStyle.Trim.None`.
 - Semántica: un `semantics {}` junto a `toggleable` deja la etiqueta en un nodo aparte; usar `clearAndSetSemantics`. `appendInlineContent` no admite `alternateText` vacío.
 - Al cambiar una `@Entity`, sube la versión de la base antes de compilar: si no, KSP reescribe el JSON del esquema publicado.
+- Compose puede cortar la línea entre una casilla en línea (`InlineTextContent`) y su texto, aunque se use `WORD JOINER` y espacios sin corte: hay que medir y poner los saltos a mano.
+- `adb` no está en PATH: `~/Library/Android/sdk/platform-tools/adb`. Figma plan Starter tiene límite de llamadas MCP.
 - Emulador: Atrás con el teclado cerrado sale del editor (y descarta el historial de deshacer). El emulador tiene teclado físico: Gboard solo muestra su barra flotante (tapa la izquierda), así que la escritura con teclado en pantalla no se puede probar ahí.
 
 ## Próximos pasos
 - Corregir el error de lint preexistente: `NoteEditorRoute.kt:50` (`LocalContextGetResourceValueCall`).
 - Spec 005: comprobar en un móvil con teclado en pantalla que escribir se agrupa por palabra (confirmar una sugerencia es paso propio).
 - Nota vaciada (a mano o deshaciendo) tras autoguardarse: `leave()` mira la última versión guardada y no la borra; vuelve a Mis notas con su texto anterior. Preexistente; candidato a spec.
-- Limitación conocida: con el contenido vacío, al crear la primera tarea el cursor queda bajo la casilla hasta escribir.
 - Comprobar spec 006 en API 30 (ventana inicial, RF-40) y API 24-25 (barra de navegación en Claro).
 - Unificar el nombre de la app: el pie de Ajustes dice «Notas» y `app_name`, «NotesApp».
 - Candidato a spec: `allowBackup` y las reglas sin configurar podrían copiar las notas a la nube, frente al aviso «Tus notas se guardan en este dispositivo».
-- Prueba de flujo completo con `HiltTestRunner` + `@TestInstallIn` (aún no existe).

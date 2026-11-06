@@ -98,7 +98,9 @@
     <string name="settings_default_color_save_error">No se pudo guardar el color predeterminado</string>
     <string name="settings_notes_view">Vista de notas</string>
     <string name="settings_notes_view_detail">Organiza tu pantalla de inicio</string>
-    <string name="settings_notes_view_value">Cuadrícula</string>
+    <string name="notes_view_grid">Cuadrícula</string>
+    <string name="notes_view_list">Lista</string>
+    <string name="notes_view_save_error">No se pudo guardar la vista</string>
     <string name="settings_auto_save">Guardado automático</string>
     <string name="settings_auto_save_detail">Guarda mientras escribes</string>
     <string name="settings_auto_save_on">Activado</string>

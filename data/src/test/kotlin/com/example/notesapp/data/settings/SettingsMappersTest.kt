@@ -1,6 +1,7 @@
 package com.example.notesapp.data.settings
 
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.ThemeMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -87,7 +88,51 @@ class SettingsMappersTest {
         assertNull("AQUA".toNoteColorOrNull())
     }
 
+    @Test
+    fun `given each view when mapping to storage then value is its stable text`() {
+        assertEquals(viewsByStorageValue, NotesView.entries.associateBy { it.toStorageValue() })
+    }
+
+    @Test
+    fun `given each stable text when mapping to view then is its view`() {
+        viewsByStorageValue.forEach { (storageValue, view) ->
+            assertEquals(view, storageValue.toNotesViewOrNull())
+        }
+    }
+
+    @Test
+    fun `given each view when mapping to storage and back then is unchanged`() {
+        NotesView.entries.forEach { view ->
+            assertEquals(view, view.toStorageValue().toNotesViewOrNull())
+        }
+    }
+
+    @Test
+    fun `given no value when mapping to view then is null`() {
+        assertNull((null as String?).toNotesViewOrNull())
+    }
+
+    @Test
+    fun `given unknown text when mapping to view then is null`() {
+        assertNull("mosaic".toNotesViewOrNull())
+    }
+
+    @Test
+    fun `given empty text when mapping to view then is null`() {
+        assertNull("".toNotesViewOrNull())
+    }
+
+    @Test
+    fun `given enum name when mapping to view then is null`() {
+        assertNull("GRID".toNotesViewOrNull())
+    }
+
     private companion object {
+        val viewsByStorageValue = mapOf(
+            "grid" to NotesView.GRID,
+            "list" to NotesView.LIST,
+        )
+
         val colorsByStorageValue = mapOf(
             "none" to NoteColor.NONE,
             "aqua" to NoteColor.AQUA,

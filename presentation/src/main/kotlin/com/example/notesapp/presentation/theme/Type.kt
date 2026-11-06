@@ -63,6 +63,11 @@ data class NotesTypography(
     /** Valor de la fila activa de Ajustes: el diseño lo destaca solo en el tema claro. */
     val settingsActiveValue: TextStyle = settingsValue,
     val settingsNoticeDetail: TextStyle = Regular.copy(fontSize = 12.sp, lineHeight = 1.4.em),
+    val viewOption: TextStyle = Regular.copy(fontSize = 10.sp),
+    val viewOptionSelected: TextStyle = SemiBold.copy(fontSize = 10.sp),
+    val listCardContent: TextStyle = Regular.copy(fontSize = 14.sp, lineHeight = 1.55.em),
+    val listCardDate: TextStyle = Regular.copy(fontSize = 11.sp),
+    val listCardTag: TextStyle = SemiBold.copy(fontSize = 10.sp),
 )
 
 internal val LightNotesTypography = NotesTypography(settingsActiveValue = SemiBold.copy(fontSize = 12.sp))

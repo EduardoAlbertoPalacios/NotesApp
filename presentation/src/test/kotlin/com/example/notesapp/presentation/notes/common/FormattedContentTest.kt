@@ -15,6 +15,7 @@ import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.TextFormat
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -311,6 +312,236 @@ class FormattedContentTest {
         )
     }
 
+    @Test
+    fun `given tasks without flow when building card content then has no task break`() {
+        val result = buildCardContent("Uno\nDos\nTres", emptyList(), allTasks(3))
+
+        assertFalse(TASK_BREAK in result.text)
+        assertEquals("${Z}Uno\n${Z}Dos\n${Z}Tres", result.text)
+    }
+
+    @Test
+    fun `given no tasks with flow when building card content then has no task break and keeps line breaks`() {
+        val result = buildCardContent("Uno\nDos", emptyList(), emptyList(), flowTasks = true)
+
+        assertEquals("Uno\nDos", result.text)
+    }
+
+    @Test
+    fun `given consecutive tasks with flow when building card content then puts a mark between each`() {
+        val result = buildCardContent("Uno\nDos\nTres", emptyList(), allTasks(3), flowTasks = true)
+
+        assertEquals("${Z}Uno$TASK_BREAK${Z}Dos$TASK_BREAK${Z}Tres", result.text)
+    }
+
+    @Test
+    fun `given tasks separated by text with flow when building card content then keeps line breaks and has no mark`() {
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 2, isDone = false))
+
+        val result = buildCardContent("Uno\nTexto\nDos", emptyList(), tasks, flowTasks = true)
+
+        assertEquals("${Z}Uno\nTexto\n${Z}Dos", result.text)
+    }
+
+    @Test
+    fun `given text before and after tasks with flow when building card content then only tasks are joined`() {
+        val tasks = listOf(ChecklistItem(line = 1, isDone = false), ChecklistItem(line = 2, isDone = false))
+
+        val result = buildCardContent("Antes\nUno\nDos\nDespués", emptyList(), tasks, flowTasks = true)
+
+        assertEquals("Antes\n${Z}Uno$TASK_BREAK${Z}Dos\nDespués", result.text)
+    }
+
+    @Test
+    fun `given empty lines and trailing break with flow when building card content then keeps those breaks`() {
+        val tasks = listOf(ChecklistItem(line = 2, isDone = false), ChecklistItem(line = 3, isDone = false))
+
+        val result = buildCardContent("Antes\n\nUno\nDos\n\nDespués\n", emptyList(), tasks, flowTasks = true)
+
+        assertEquals("Antes\n\n${Z}Uno$TASK_BREAK${Z}Dos\n\nDespués\n", result.text)
+    }
+
+    @Test
+    fun `given done task with flow when building card content then only its text is struck through`() {
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true))
+
+        val result = buildCardContent(LIST, emptyList(), tasks, flowTasks = true)
+
+        assertEquals("${Z}Tomates$TASK_BREAK${Z}Pan", result.text)
+        assertEquals(listOf(range(SpanStyle(textDecoration = TextDecoration.LineThrough), 10, 13)), result.spanStyles)
+    }
+
+    @Test
+    fun `given format across tasks with flow when building card content then styles stay on the text and skip the mark`() {
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true))
+
+        val result = buildCardContent(LIST, listOf(FormatSpan(0, LIST.length, TextFormat.BOLD)), tasks, flowTasks = true)
+
+        assertEquals(
+            listOf(
+                range(SpanStyle(fontWeight = FontWeight.Bold), 1, 8),
+                range(SpanStyle(fontWeight = FontWeight.Bold, textDecoration = TextDecoration.LineThrough), 10, 13),
+            ),
+            result.spanStyles,
+        )
+    }
+
+    @Test
+    fun `given tasks with flow when building card content then each keeps its checkbox`() {
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true))
+
+        val result = buildCardContent(LIST, emptyList(), tasks, flowTasks = true)
+
+        assertEquals(
+            listOf(CARD_TASK_PENDING to (0 until 1), CARD_TASK_DONE to (9 until 10)),
+            result.getStringAnnotations(0, result.length).map { it.item to (it.start until it.end) },
+        )
+    }
+
+    @Test
+    fun `given text without mark when wrapping tasks then returns the same object without measuring`() {
+        val text = AnnotatedString("Sin tareas\nseguidas")
+
+        val result = text.wrapTasks(MAX_WIDTH, SEPARATOR_WIDTH) { error("No debe medir") }
+
+        assertSame(text, result)
+    }
+
+    @Test
+    fun `given all tasks fit when wrapping then joins them with the separator on one line`() {
+        val result = marked("Aa", "Bb", "Cc").wrapTasks(maxWidth = 100, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("Aa${TASK_SEPARATOR}Bb${TASK_SEPARATOR}Cc", result.text)
+    }
+
+    @Test
+    fun `given task fits exactly up to the limit when wrapping then stays on the line`() {
+        val result = marked("Aaaa", "Bbbb").wrapTasks(maxWidth = 9, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("Aaaa${TASK_SEPARATOR}Bbbb", result.text)
+    }
+
+    @Test
+    fun `given task exceeds the limit by one when wrapping then starts on the next line`() {
+        val result = marked("Aaaa", "Bbbb").wrapTasks(maxWidth = 8, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("Aaaa\nBbbb", result.text)
+    }
+
+    @Test
+    fun `given separator is what does not fit when wrapping then starts on the next line`() {
+        val result = marked("Aaaa", "Bbbb").wrapTasks(maxWidth = 9, separatorWidth = 2, measure = byLength)
+
+        assertEquals("Aaaa\nBbbb", result.text)
+    }
+
+    @Test
+    fun `given task wider than the line when wrapping then starts on its own line and the next one too`() {
+        val result = marked("Aa", "Bbbbbbbbbbbb", "Cc")
+            .wrapTasks(maxWidth = 9, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("Aa\nBbbbbbbbbbbb\nCc", result.text)
+    }
+
+    @Test
+    fun `given first task wider than the line when wrapping then it keeps the first line without a blank one`() {
+        val result = marked("Aaaaaaaaaaaa", "Bb").wrapTasks(maxWidth = 9, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("Aaaaaaaaaaaa\nBb", result.text)
+    }
+
+    @Test
+    fun `given many tasks when wrapping then fills several rows and width restarts on each`() {
+        val result = marked("Aaaa", "Bbbb", "Cccc", "Dddd", "Eeee")
+            .wrapTasks(maxWidth = 9, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals(
+            "Aaaa${TASK_SEPARATOR}Bbbb\nCccc${TASK_SEPARATOR}Dddd\nEeee",
+            result.text,
+        )
+    }
+
+    @Test
+    fun `given groups separated by text when wrapping then width restarts after the text`() {
+        val text = AnnotatedString("Aaaa${TASK_BREAK}Bbbb\nTexto\nCccc${TASK_BREAK}Dddd")
+
+        val result = text.wrapTasks(maxWidth = 9, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("Aaaa${TASK_SEPARATOR}Bbbb\nTexto\nCccc${TASK_SEPARATOR}Dddd", result.text)
+    }
+
+    @Test
+    fun `given long text before the tasks when wrapping then only the line of the task counts`() {
+        val text = AnnotatedString("Un texto mucho más largo que la línea\nAaaa${TASK_BREAK}Bbbb")
+
+        val result = text.wrapTasks(maxWidth = 9, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("Un texto mucho más largo que la línea\nAaaa${TASK_SEPARATOR}Bbbb", result.text)
+    }
+
+    @Test
+    fun `given long text after a task when wrapping then the task is measured without that text`() {
+        val text = AnnotatedString("Aaaa${TASK_BREAK}Bbbb\nUn texto mucho más largo que la línea")
+
+        val result = text.wrapTasks(maxWidth = 9, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("Aaaa${TASK_SEPARATOR}Bbbb\nUn texto mucho más largo que la línea", result.text)
+    }
+
+    @Test
+    fun `given any width when wrapping then the result never contains the mark`() {
+        val text = marked("Aaaa", "Bbbb", "Cccc", "Dddd")
+
+        (1..30).forEach { maxWidth ->
+            val result = text.wrapTasks(maxWidth, SEPARATOR_WIDTH, byLength)
+
+            assertFalse("Ancho $maxWidth", TASK_BREAK in result.text)
+        }
+    }
+
+    @Test
+    fun `given card content when wrapped on one line then styles and checkboxes move with their text`() {
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true))
+        val content = buildCardContent(LIST, listOf(FormatSpan(0, 7, TextFormat.BOLD)), tasks, flowTasks = true)
+
+        val result = content.wrapTasks(maxWidth = 100, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        val secondCheckbox = 8 + TASK_SEPARATOR.length
+        assertEquals("${Z}Tomates$TASK_SEPARATOR${Z}Pan", result.text)
+        assertEquals(
+            listOf(
+                range(SpanStyle(fontWeight = FontWeight.Bold), 1, 8),
+                range(SpanStyle(textDecoration = TextDecoration.LineThrough), secondCheckbox + 1, secondCheckbox + 4),
+            ),
+            result.spanStyles,
+        )
+        assertEquals(
+            listOf(CARD_TASK_PENDING to 0, CARD_TASK_DONE to secondCheckbox),
+            result.getStringAnnotations(0, result.length).map { it.item to it.start },
+        )
+    }
+
+    @Test
+    fun `given card content when wrapped on two lines then styles and checkboxes move with their text`() {
+        val tasks = listOf(ChecklistItem(line = 0, isDone = false), ChecklistItem(line = 1, isDone = true))
+        val content = buildCardContent(LIST, emptyList(), tasks, flowTasks = true)
+
+        val result = content.wrapTasks(maxWidth = 9, separatorWidth = SEPARATOR_WIDTH, measure = byLength)
+
+        assertEquals("${Z}Tomates\n${Z}Pan", result.text)
+        assertEquals(listOf(range(SpanStyle(textDecoration = TextDecoration.LineThrough), 10, 13)), result.spanStyles)
+        assertEquals(
+            listOf(CARD_TASK_PENDING to 0, CARD_TASK_DONE to 9),
+            result.getStringAnnotations(0, result.length).map { it.item to it.start },
+        )
+    }
+
+    private val byLength: (AnnotatedString) -> Int = { it.length }
+
+    private fun marked(vararg tasks: String) = AnnotatedString(tasks.joinToString(TASK_BREAK.toString()))
+
+    private fun allTasks(count: Int) = List(count) { ChecklistItem(line = it, isDone = false) }
+
     private fun paragraph(firstLine: TextUnit, restLine: TextUnit, lineHeight: TextUnit) = ParagraphStyle(
         textIndent = TextIndent(firstLine = firstLine, restLine = restLine),
         lineHeight = lineHeight,
@@ -329,5 +560,8 @@ class FormattedContentTest {
         val INDENT = 28.sp
         val LINE_HEIGHT = 32.sp
         val DONE_COLOR = Color.Gray
+        const val Z = "\u200B"
+        const val MAX_WIDTH = 100
+        const val SEPARATOR_WIDTH = 1
     }
 }

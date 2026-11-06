@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteColorPickerSheet
@@ -65,9 +66,11 @@ internal object SettingsTestTags {
     const val VERSION = "settings_version"
     const val THEME_SHEET = "settings_theme_sheet"
     const val THEME_OPTION = "settings_theme_option_"
+    const val NOTES_VIEW_SHEET = "settings_notes_view_sheet"
+    const val NOTES_VIEW_OPTION = "settings_notes_view_option_"
 }
 
-/** Solo funcionan las filas Tema y Color predeterminado; las demás se ven deshabilitadas hasta tener su propia spec. */
+/** Solo funcionan las filas Tema, Color predeterminado y Vista de notas; las demás se ven deshabilitadas hasta tener su propia spec. */
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
@@ -92,6 +95,9 @@ fun SettingsScreen(
     }
     if (state.isThemeSheetVisible) {
         ThemeSheet(selected = state.themeMode, onIntent = onIntent)
+    }
+    if (state.isNotesViewSheetVisible) {
+        NotesViewSheet(selected = state.notesView, onIntent = onIntent)
     }
     state.defaultColorPicker?.let { pickerColor ->
         NoteColorPickerSheet(
@@ -164,12 +170,9 @@ private fun SettingsContent(
                 onClick = { onIntent(SettingsIntent.DefaultColorRowClicked) },
             )
             GroupDivider()
-            DisabledRow(
-                iconRes = R.drawable.ic_grid,
-                titleRes = R.string.settings_notes_view,
-                detailRes = R.string.settings_notes_view_detail,
-                testTag = SettingsTestTags.NOTES_VIEW_ROW,
-                valueRes = R.string.settings_notes_view_value,
+            NotesViewRow(
+                view = state.notesView,
+                onClick = { onIntent(SettingsIntent.NotesViewRowClicked) },
             )
         }
         SettingsGroup(titleRes = R.string.settings_section_notes) {
@@ -319,6 +322,25 @@ private fun DefaultColorRow(color: NoteColor, onClick: () -> Unit, modifier: Mod
     ) {
         Text(
             text = stringResource(color.labelRes()),
+            style = NotesTheme.typography.settingsValue,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Chevron()
+    }
+}
+
+@Composable
+private fun NotesViewRow(view: NotesView, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    SettingsRow(
+        iconRes = R.drawable.ic_grid,
+        titleRes = R.string.settings_notes_view,
+        detailRes = R.string.settings_notes_view_detail,
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(SettingsTestTags.NOTES_VIEW_ROW),
+    ) {
+        Text(
+            text = stringResource(view.labelRes()),
             style = NotesTheme.typography.settingsValue,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

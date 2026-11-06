@@ -87,6 +87,7 @@ import com.example.notesapp.presentation.notes.common.FormattedContentTransforma
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
 import com.example.notesapp.presentation.notes.common.ColorPickerTestTags
 import com.example.notesapp.presentation.notes.common.NoteSurfaceTheme
+import com.example.notesapp.presentation.notes.common.labelRes
 import com.example.notesapp.presentation.notes.common.TaskTextStyle
 import com.example.notesapp.presentation.notes.common.asText
 import com.example.notesapp.presentation.notes.common.toContainerColor
@@ -429,11 +430,6 @@ private fun CategoryOption(
             color = if (isSelected) colors.onPrimary else colors.onSurfaceVariant,
         )
     }
-}
-
-private fun NoteCategory.labelRes(): Int = when (this) {
-    NoteCategory.WORK -> R.string.note_category_work
-    NoteCategory.PERSONAL -> R.string.note_category_personal
 }
 
 private fun NoteCategory.descriptionRes(): Int = when (this) {

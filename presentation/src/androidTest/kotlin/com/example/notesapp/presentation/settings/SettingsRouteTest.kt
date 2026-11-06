@@ -14,8 +14,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
+import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.GetThemeModeUseCase
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SetDefaultNoteColorUseCase
+import com.example.notesapp.domain.settings.SetNotesViewUseCase
 import com.example.notesapp.domain.settings.SetThemeModeUseCase
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.SettingsRepository
@@ -52,6 +55,8 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
                 SetThemeModeUseCase(repository),
                 GetDefaultNoteColorUseCase(repository),
                 SetDefaultNoteColorUseCase(repository),
+                GetNotesViewUseCase(repository),
+                SetNotesViewUseCase(repository),
             )
         }
         composeRule.setContent {
@@ -88,6 +93,43 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
                 .fetchSemanticsNodes().isNotEmpty()
             sheetClosed && errorShown
         }
+    }
+
+    private fun chooseListViewInSheet() {
+        row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.notes_view_grid))).performClick()
+        row(SettingsTestTags.NOTES_VIEW_OPTION + NotesView.LIST.name).performClick()
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) {
+            val sheetClosed = composeRule.onAllNodesWithTag(SettingsTestTags.NOTES_VIEW_SHEET)
+                .fetchSemanticsNodes().isEmpty()
+            val errorShown = composeRule.onAllNodesWithText(string(R.string.notes_view_save_error))
+                .fetchSemanticsNodes().isNotEmpty()
+            sheetClosed && errorShown
+        }
+    }
+
+    @Test
+    fun given_failing_save_when_notes_view_chosen_in_sheet_then_shows_its_error_and_keeps_chosen_view() {
+        setFailingSaveContent()
+
+        chooseListViewInSheet()
+
+        composeRule.onNodeWithText(string(R.string.notes_view_save_error)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.settings_theme_save_error)).assertDoesNotExist()
+        composeRule.onNodeWithText(string(R.string.settings_default_color_save_error)).assertDoesNotExist()
+        row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.notes_view_list)))
+    }
+
+    @Test
+    fun given_visible_notes_view_save_error_when_back_clicked_then_navigates_without_waiting_for_error_to_close() {
+        setFailingSaveContent()
+        chooseListViewInSheet()
+        composeRule.mainClock.autoAdvance = false
+
+        row(SettingsTestTags.BACK).performClick()
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) { navigateBackCalls > 0 }
+
+        assertEquals(1, navigateBackCalls)
+        composeRule.onNodeWithText(string(R.string.notes_view_save_error)).assertIsDisplayed()
     }
 
     @Test
@@ -153,11 +195,12 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
     }
 }
 
-/** Como el repositorio real, un fallo al guardar mantiene el tema o el color elegido durante la sesión. */
+/** Como el repositorio real, un fallo al guardar mantiene el tema, el color o la vista elegidos durante la sesión. */
 private class FailingSaveSettingsRepository(initialMode: ThemeMode) : SettingsRepository {
 
     private val themeMode = MutableStateFlow<ThemeMode?>(initialMode)
     private val defaultNoteColor = MutableStateFlow<NoteColor?>(null)
+    private val notesView = MutableStateFlow<NotesView?>(null)
 
     override fun observeThemeMode(): Flow<ThemeMode?> = themeMode
 
@@ -170,6 +213,13 @@ private class FailingSaveSettingsRepository(initialMode: ThemeMode) : SettingsRe
 
     override suspend fun setDefaultNoteColor(color: NoteColor): AppResult<Unit, SettingsError> {
         defaultNoteColor.value = color
+        return AppResult.Error(SettingsError.Storage)
+    }
+
+    override fun observeNotesView(): Flow<NotesView?> = notesView
+
+    override suspend fun setNotesView(view: NotesView): AppResult<Unit, SettingsError> {
+        notesView.value = view
         return AppResult.Error(SettingsError.Storage)
     }
 }

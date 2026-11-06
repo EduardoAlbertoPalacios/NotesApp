@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.GetNotesUseCase
 import com.example.notesapp.domain.notes.Note
+import com.example.notesapp.domain.settings.GetNotesViewUseCase
+import com.example.notesapp.domain.settings.NotesView
+import com.example.notesapp.domain.settings.SetNotesViewUseCase
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
 import com.example.notesapp.presentation.notes.common.buildCardContent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -29,6 +33,8 @@ class NoteListViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val getNotes: GetNotesUseCase,
     private val dateFormatter: NoteDateFormatter,
+    private val getNotesView: GetNotesViewUseCase,
+    private val setNotesView: SetNotesViewUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NoteListUiState(query = savedStateHandle[QUERY_KEY] ?: ""))
@@ -60,6 +66,14 @@ class NoteListViewModel @Inject constructor(
             }
             is NoteListIntent.QueryChanged -> updateQuery(intent.query)
             NoteListIntent.ClearQueryClicked -> updateQuery("")
+            is NoteListIntent.NotesViewSelected -> selectNotesView(intent.view)
+        }
+    }
+
+    private fun selectNotesView(view: NotesView) {
+        if (view == _state.value.notesView) return
+        viewModelScope.launch {
+            if (setNotesView(view) is AppResult.Error) _effects.send(NoteListEffect.ShowNotesViewSaveError)
         }
     }
 
@@ -73,37 +87,47 @@ class NoteListViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun observeNotes() {
         // Cada cambio de filtro o de texto cancela el cálculo anterior.
-        combine(selectedFilter, query) { filter, text -> filter to text }
+        val notes = combine(selectedFilter, query) { filter, text -> filter to text }
             .flatMapLatest { (filter, text) -> getNotes(filter.category, text) }
-            .onEach { result ->
+            // Antes de combinar: cambiar de vista no tiene por qué volver a construir las tarjetas.
+            .map { result -> result to (result as? AppResult.Success)?.data?.notes?.map { note -> note.toUi() }.orEmpty() }
+        // Junto con la vista: la carga no termina hasta conocer ambas, para no mostrar las notas en la otra vista.
+        combine(notes, getNotesView()) { (result, items), view -> Triple(result, items, view) }
+            .onEach { (result, items, view) ->
                 when (result) {
                     is AppResult.Success -> {
                         _state.update {
                             it.copy(
                                 isLoading = false,
                                 hasError = false,
-                                notes = result.data.notes.map { note -> note.toUi() },
+                                notes = items,
                                 totalCount = result.data.totalCount,
+                                notesView = view,
                             )
                         }
                         // Sin notas el buscador se deshabilita: no puede quedar una búsqueda activa.
                         if (result.data.totalCount == 0 && _state.value.query.isNotEmpty()) updateQuery("")
                     }
-                    is AppResult.Error -> _state.update { it.copy(isLoading = false, hasError = true) }
+                    is AppResult.Error -> _state.update { it.copy(isLoading = false, hasError = true, notesView = view) }
                 }
             }
             .launchIn(viewModelScope)
     }
 
-    private fun Note.toUi() = NoteItemUi(
-        id = id,
-        title = title,
-        content = buildCardContent(content, contentSpans, contentTasks),
-        color = color,
-        isPinned = isPinned,
-        date = dateFormatter.format(updatedAt),
-        imagePath = images.firstOrNull()?.path,
-    )
+    private fun Note.toUi(): NoteItemUi {
+        val cardContent = buildCardContent(content, contentSpans, contentTasks)
+        return NoteItemUi(
+            id = id,
+            title = title,
+            content = cardContent,
+            color = color,
+            isPinned = isPinned,
+            date = dateFormatter.format(updatedAt),
+            imagePath = images.firstOrNull()?.path,
+            category = category,
+            listContent = if (contentTasks.isEmpty()) cardContent else buildCardContent(content, contentSpans, contentTasks, flowTasks = true),
+        )
+    }
 
     private fun send(effect: NoteListEffect) {
         viewModelScope.launch { _effects.send(effect) }

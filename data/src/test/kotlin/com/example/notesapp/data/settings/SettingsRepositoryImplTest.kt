@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.ThemeMode
 import java.io.IOException
@@ -18,6 +19,7 @@ class SettingsRepositoryImplTest {
 
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val defaultNoteColorKey = stringPreferencesKey("default_note_color")
+    private val notesViewKey = stringPreferencesKey("notes_view")
 
     private fun dataStore(storedValue: String? = null) = FakePreferencesDataStore(
         storedValue?.let { preferencesOf(themeModeKey to it) } ?: emptyPreferences(),
@@ -25,6 +27,10 @@ class SettingsRepositoryImplTest {
 
     private fun colorDataStore(storedValue: String? = null) = FakePreferencesDataStore(
         storedValue?.let { preferencesOf(defaultNoteColorKey to it) } ?: emptyPreferences(),
+    )
+
+    private fun viewDataStore(storedValue: String? = null) = FakePreferencesDataStore(
+        storedValue?.let { preferencesOf(notesViewKey to it) } ?: emptyPreferences(),
     )
 
     @Test
@@ -352,7 +358,214 @@ class SettingsRepositoryImplTest {
         assertEquals("mint", dataStore.preferences.value[defaultNoteColorKey])
     }
 
+    @Test
+    fun `given no stored view when observing then emits null`() = runTest {
+        val repository = SettingsRepositoryImpl(viewDataStore())
+
+        repository.observeNotesView().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given each stored text when observing then emits its view`() = runTest {
+        viewsByStorageValue.forEach { (storageValue, view) ->
+            val repository = SettingsRepositoryImpl(viewDataStore(storedValue = storageValue))
+
+            repository.observeNotesView().test {
+                assertEquals(view, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun `given each view when saving then stores its stable text`() = runTest {
+        viewsByStorageValue.forEach { (storageValue, view) ->
+            val dataStore = viewDataStore()
+
+            val result = SettingsRepositoryImpl(dataStore).setNotesView(view)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(storageValue, dataStore.preferences.value[notesViewKey])
+        }
+    }
+
+    @Test
+    fun `given observed view when saving then stores its value and emits the new view`() = runTest {
+        val dataStore = viewDataStore(storedValue = "grid")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeNotesView().test {
+            assertEquals(NotesView.GRID, awaitItem())
+
+            val result = repository.setNotesView(NotesView.LIST)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(NotesView.LIST, awaitItem())
+            assertEquals("list", dataStore.preferences.value[notesViewKey])
+        }
+    }
+
+    @Test
+    fun `given saved view when the app reopens then emits that view`() = runTest {
+        val dataStore = viewDataStore()
+        SettingsRepositoryImpl(dataStore).setNotesView(NotesView.LIST)
+
+        val reopened = SettingsRepositoryImpl(dataStore)
+
+        reopened.observeNotesView().test {
+            assertEquals(NotesView.LIST, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given unknown stored view when observing then emits null`() = runTest {
+        val repository = SettingsRepositoryImpl(viewDataStore(storedValue = "mosaic"))
+
+        repository.observeNotesView().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given io failure when reading view then emits null`() = runTest {
+        val dataStore = viewDataStore(storedValue = "list")
+        dataStore.readFailure = IOException("disk failure")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeNotesView().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given unexpected failure when reading view then propagates it`() = runTest {
+        val dataStore = viewDataStore(storedValue = "list")
+        dataStore.readFailure = IllegalStateException("bug")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeNotesView().test {
+            assertTrue(awaitError() is IllegalStateException)
+        }
+    }
+
+    @Test
+    fun `given io failure when reading view and a later save succeeds then emits the saved view`() = runTest {
+        val dataStore = viewDataStore()
+        dataStore.readFailure = IOException("disk failure")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeNotesView().test {
+            assertEquals(null, awaitItem())
+            dataStore.readFailure = null
+
+            val result = repository.setNotesView(NotesView.LIST)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(NotesView.LIST, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given io failure when saving view then returns storage error and keeps emitting the chosen view`() = runTest {
+        val dataStore = viewDataStore(storedValue = "grid")
+        dataStore.writeFailure = IOException("disk full")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeNotesView().test {
+            assertEquals(NotesView.GRID, awaitItem())
+
+            val result = repository.setNotesView(NotesView.LIST)
+
+            assertEquals(AppResult.Error(SettingsError.Storage), result)
+            assertEquals(NotesView.LIST, awaitItem())
+        }
+        repository.observeNotesView().test {
+            assertEquals(NotesView.LIST, awaitItem())
+        }
+        assertEquals("grid", dataStore.preferences.value[notesViewKey])
+    }
+
+    @Test
+    fun `given failed view save when the app reopens then emits the last stored view`() = runTest {
+        val dataStore = viewDataStore(storedValue = "grid")
+        dataStore.writeFailure = IOException("disk full")
+        SettingsRepositoryImpl(dataStore).setNotesView(NotesView.LIST)
+
+        val reopened = SettingsRepositoryImpl(dataStore)
+
+        reopened.observeNotesView().test {
+            assertEquals(NotesView.GRID, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given failed view save when saving another view succeeds then emits that view`() = runTest {
+        val dataStore = viewDataStore()
+        dataStore.writeFailure = IOException("disk full")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeNotesView().test {
+            assertEquals(null, awaitItem())
+            repository.setNotesView(NotesView.LIST)
+            assertEquals(NotesView.LIST, awaitItem())
+            dataStore.writeFailure = null
+
+            val result = repository.setNotesView(NotesView.GRID)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(NotesView.GRID, awaitItem())
+            assertEquals("grid", dataStore.preferences.value[notesViewKey])
+        }
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `given unexpected failure when saving view then propagates it`() = runTest {
+        val dataStore = viewDataStore()
+        dataStore.writeFailure = IllegalStateException("bug")
+
+        SettingsRepositoryImpl(dataStore).setNotesView(NotesView.LIST)
+    }
+
+    @Test
+    fun `given stored theme and color when saving view then theme and color are unchanged`() = runTest {
+        val dataStore = FakePreferencesDataStore(
+            preferencesOf(themeModeKey to "light", defaultNoteColorKey to "mint"),
+        )
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.setNotesView(NotesView.LIST)
+
+        repository.observeThemeMode().test {
+            assertEquals(ThemeMode.LIGHT, awaitItem())
+        }
+        repository.observeDefaultNoteColor().test {
+            assertEquals(NoteColor.MINT, awaitItem())
+        }
+        assertEquals("light", dataStore.preferences.value[themeModeKey])
+        assertEquals("mint", dataStore.preferences.value[defaultNoteColorKey])
+    }
+
+    @Test
+    fun `given stored view when saving theme and color then view is unchanged`() = runTest {
+        val dataStore = viewDataStore(storedValue = "list")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.setThemeMode(ThemeMode.LIGHT)
+        repository.setDefaultNoteColor(NoteColor.MINT)
+
+        repository.observeNotesView().test {
+            assertEquals(NotesView.LIST, awaitItem())
+        }
+        assertEquals("list", dataStore.preferences.value[notesViewKey])
+    }
+
     private companion object {
+        val viewsByStorageValue = mapOf(
+            "grid" to NotesView.GRID,
+            "list" to NotesView.LIST,
+        )
+
         val colorsByStorageValue = mapOf(
             "none" to NoteColor.NONE,
             "aqua" to NoteColor.AQUA,

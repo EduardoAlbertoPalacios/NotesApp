@@ -65,6 +65,9 @@ data class Sizes(
     val settingsSwitchThumb: Dp = 20.dp,
     val themeOption: Dp = 56.dp,
     val themeOptionCheck: Dp = 22.dp,
+    val viewOption: Dp = 52.dp,
+    val viewOptionIcon: Dp = 18.dp,
+    val listCardTagBorder: Dp = 0.5.dp,
 )
 
 @Immutable
@@ -78,4 +81,5 @@ data class Radii(
     val taskCheckbox: Dp = 5.dp,
     val cardTaskCheckbox: Dp = 3.dp,
     val settingsNoticeIcon: Dp = 14.dp,
+    val viewOption: Dp = 12.dp,
 )
