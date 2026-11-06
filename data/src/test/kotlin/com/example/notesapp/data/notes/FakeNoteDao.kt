@@ -66,6 +66,11 @@ internal class FakeNoteDao : NoteDao {
         images.update { list -> list.filterNot { it.id == id } }
     }
 
+    override suspend fun getImagePaths(): List<String> {
+        failure?.let { throw it }
+        return images.value.map { it.path }
+    }
+
     private fun NoteEntity.withImages(all: List<NoteImageEntity>) =
         NoteWithImages(note = this, images = all.filter { it.noteId == id })
 }

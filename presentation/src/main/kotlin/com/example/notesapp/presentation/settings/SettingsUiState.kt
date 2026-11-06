@@ -12,4 +12,5 @@ data class SettingsUiState(
     val defaultColorPicker: NoteColor? = null,
     val notesView: NotesView = NotesView.DEFAULT,
     val isNotesViewSheetVisible: Boolean = false,
+    val isAutoSaveEnabled: Boolean = true,
 )

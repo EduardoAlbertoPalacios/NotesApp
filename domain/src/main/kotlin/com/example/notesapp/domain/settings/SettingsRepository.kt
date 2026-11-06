@@ -22,4 +22,10 @@ interface SettingsRepository {
 
     /** Si no se puede guardar, devuelve el error pero [observeNotesView] sigue emitiendo [view] durante la sesión. */
     suspend fun setNotesView(view: NotesView): AppResult<Unit, SettingsError>
+
+    /** Si el guardado automático está encendido; `null` si no hay valor guardado o no se puede leer. */
+    fun observeAutoSaveEnabled(): Flow<Boolean?>
+
+    /** Si no se puede guardar, devuelve el error pero [observeAutoSaveEnabled] sigue emitiendo [enabled] durante la sesión. */
+    suspend fun setAutoSaveEnabled(enabled: Boolean): AppResult<Unit, SettingsError>
 }

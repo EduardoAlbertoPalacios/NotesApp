@@ -8,4 +8,7 @@ interface ImageStorage {
     suspend fun save(sourceUri: String): AppResult<String, NoteError>
 
     suspend fun delete(path: String)
+
+    /** Rutas de todas las copias guardadas. */
+    suspend fun listPaths(): Set<String>
 }

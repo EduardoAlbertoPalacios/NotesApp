@@ -67,6 +67,55 @@ class SettingsDataStoreTest {
         }
     }
 
+    @Test
+    fun given_saved_auto_save_when_reopening_the_file_then_reads_the_same_value() = runTest {
+        val result = withRepository { it.setAutoSaveEnabled(false) }
+
+        assertEquals(AppResult.Success(Unit), result)
+        withRepository { repository ->
+            repository.observeAutoSaveEnabled().test {
+                assertEquals(false, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun given_empty_file_when_observing_auto_save_then_emits_null() = runTest {
+        withRepository { repository ->
+            repository.observeAutoSaveEnabled().test {
+                assertEquals(null, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun given_file_with_invalid_bytes_when_observing_auto_save_then_emits_null() = runTest {
+        writeInvalidBytes()
+
+        withRepository { repository ->
+            repository.observeAutoSaveEnabled().test {
+                assertEquals(null, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun given_saved_theme_and_auto_save_when_reopening_the_file_then_reads_both() = runTest {
+        withRepository { repository ->
+            repository.setThemeMode(ThemeMode.DARK)
+            repository.setAutoSaveEnabled(false)
+        }
+
+        withRepository { repository ->
+            repository.observeThemeMode().test {
+                assertEquals(ThemeMode.DARK, awaitItem())
+            }
+            repository.observeAutoSaveEnabled().test {
+                assertEquals(false, awaitItem())
+            }
+        }
+    }
+
     private fun writeInvalidBytes() {
         settingsFile.writeBytes(ByteArray(16) { 0xFF.toByte() })
     }

@@ -55,6 +55,12 @@ class NoteListViewModelTest {
         override suspend fun addImages(noteId: Long, paths: List<String>): AppResult<List<NoteImage>, NoteError> =
             AppResult.Error(NoteError.Storage)
         override suspend fun removeImage(imageId: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
+        override suspend fun saveNoteChanges(
+            note: Note,
+            addedPaths: List<String>,
+            removedImageIds: List<Long>,
+        ): AppResult<Note, NoteError> = AppResult.Error(NoteError.Storage)
+        override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> = AppResult.Error(NoteError.Storage)
     }
     private val now = 1_700_000_000_000L
     private val dateFormatter = NoteDateFormatter(

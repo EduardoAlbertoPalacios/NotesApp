@@ -16,4 +16,5 @@ sealed interface SettingsIntent {
     data object NotesViewRowClicked : SettingsIntent
     data class NotesViewSelected(val view: NotesView) : SettingsIntent
     data object NotesViewSheetDismissed : SettingsIntent
+    data object AutoSaveToggled : SettingsIntent
 }

@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cash.turbine.test
+import com.example.notesapp.domain.notes.Note
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -233,6 +234,157 @@ class NoteDaoTest {
 
         assertEquals(note.copy(id = id), dao.getById(id)?.note)
     }
+
+    @Test
+    fun given_new_note_when_saving_changes_then_inserts_it_with_its_images() = runTest {
+        val note = noteEntity(title = "Viaje").copy(id = Note.NEW_ID)
+
+        val result = dao.saveChanges(note, addedPaths = listOf("/a.jpg", "/b.jpg"), removedImageIds = emptyList())
+
+        val id = requireNotNull(result).note.id
+        assertEquals(note.copy(id = id), result.note)
+        assertEquals(listOf("/a.jpg", "/b.jpg"), result.images.map { it.path })
+        assertEquals(listOf(id to "/a.jpg", id to "/b.jpg"), imagesInTable())
+    }
+
+    @Test
+    fun given_new_note_when_saving_changes_then_returns_it_as_stored() = runTest {
+        val result = dao.saveChanges(
+            noteEntity(title = "Viaje").copy(id = Note.NEW_ID),
+            addedPaths = listOf("/a.jpg"),
+            removedImageIds = emptyList(),
+        )
+
+        assertEquals(dao.getById(requireNotNull(result).note.id), result)
+    }
+
+    @Test
+    fun given_existing_note_when_saving_changes_then_updates_it_and_swaps_its_images() = runTest {
+        val id = dao.insert(noteEntity(title = "Ideas"))
+        val imageIds = dao.insertImages(listOf(image(id, "/a.jpg"), image(id, "/b.jpg")))
+        val edited = noteEntity(title = "Editada").copy(id = id, content = "Libreta", isPinned = true, updatedAt = 9)
+
+        val result = dao.saveChanges(edited, addedPaths = listOf("/c.jpg"), removedImageIds = listOf(imageIds[0]))
+
+        assertEquals(edited, result?.note)
+        assertEquals(listOf("/b.jpg", "/c.jpg"), result?.images?.map { it.path })
+        assertEquals(dao.getById(id), result)
+    }
+
+    @Test
+    fun given_existing_note_without_image_changes_when_saving_changes_then_keeps_its_images() = runTest {
+        val id = dao.insert(noteEntity())
+        dao.insertImages(listOf(image(id, "/a.jpg")))
+
+        val result = dao.saveChanges(noteEntity(title = "Editada").copy(id = id), addedPaths = emptyList(), removedImageIds = emptyList())
+
+        assertEquals("Editada", result?.note?.title)
+        assertEquals(listOf("/a.jpg"), result?.images?.map { it.path })
+        assertEquals(listOf(id to "/a.jpg"), imagesInTable())
+    }
+
+    @Test
+    fun given_missing_note_when_saving_changes_then_returns_null_and_changes_nothing() = runTest {
+        val other = dao.insert(noteEntity(title = "Otra"))
+        val otherImage = dao.insertImages(listOf(image(other, "/otra.jpg"))).single()
+
+        val result = dao.saveChanges(
+            noteEntity(title = "Fantasma").copy(id = 99),
+            addedPaths = listOf("/a.jpg"),
+            removedImageIds = listOf(otherImage),
+        )
+
+        assertEquals(null, result)
+        assertEquals(listOf("Otra"), notesInTable())
+        assertEquals(listOf(other to "/otra.jpg"), imagesInTable())
+    }
+
+    @Test
+    fun given_image_insert_fails_when_saving_new_note_then_rolls_back_everything() = runTest {
+        failInsertsOfPath("/falla.jpg")
+
+        val result = runCatching {
+            dao.saveChanges(noteEntity(title = "Viaje"), addedPaths = listOf("/a.jpg", "/falla.jpg"), removedImageIds = emptyList())
+        }
+
+        assertTrue(result.exceptionOrNull() is SQLiteConstraintException)
+        assertTrue(notesInTable().isEmpty())
+        assertTrue(imagesInTable().isEmpty())
+    }
+
+    @Test
+    fun given_image_insert_fails_when_saving_existing_note_then_keeps_note_and_images_unchanged() = runTest {
+        val note = noteEntity(title = "Ideas")
+        val id = dao.insert(note)
+        val imageId = dao.insertImages(listOf(image(id, "/a.jpg"))).single()
+        failInsertsOfPath("/falla.jpg")
+
+        val result = runCatching {
+            dao.saveChanges(note.copy(id = id, title = "Editada"), addedPaths = listOf("/falla.jpg"), removedImageIds = listOf(imageId))
+        }
+
+        assertTrue(result.exceptionOrNull() is SQLiteConstraintException)
+        assertEquals(note.copy(id = id), dao.getById(id)?.note)
+        assertEquals(listOf(id to "/a.jpg"), imagesInTable())
+    }
+
+    @Test
+    fun given_observed_note_when_saving_changes_then_emits_it_with_its_new_images() = runTest {
+        val id = dao.insert(noteEntity())
+
+        dao.observeAll().test {
+            assertTrue(awaitItem().single().images.isEmpty())
+
+            dao.saveChanges(noteEntity(title = "Editada").copy(id = id), listOf("/a.jpg"), emptyList())
+
+            val emitted = awaitItem().single()
+            assertEquals("Editada", emitted.note.title)
+            assertEquals(listOf("/a.jpg"), emitted.images.map { it.path })
+        }
+    }
+
+    @Test
+    fun given_no_images_when_getting_image_paths_then_returns_empty() = runTest {
+        dao.insert(noteEntity())
+
+        assertTrue(dao.getImagePaths().isEmpty())
+    }
+
+    @Test
+    fun given_images_in_several_notes_when_getting_image_paths_then_returns_all_of_them() = runTest {
+        val first = dao.insert(noteEntity(title = "Primera"))
+        val second = dao.insert(noteEntity(title = "Segunda"))
+        dao.insertImages(listOf(image(first, "/a.jpg"), image(first, "/b.jpg"), image(second, "/c.jpg")))
+
+        assertEquals(setOf("/a.jpg", "/b.jpg", "/c.jpg"), dao.getImagePaths().toSet())
+    }
+
+    @Test
+    fun given_deleted_note_and_image_when_getting_image_paths_then_omits_them() = runTest {
+        val deleted = dao.insert(noteEntity(title = "Borrar"))
+        val kept = dao.insert(noteEntity(title = "Conservar"))
+        val ids = dao.insertImages(listOf(image(deleted, "/a.jpg"), image(kept, "/b.jpg"), image(kept, "/c.jpg")))
+
+        dao.deleteById(deleted)
+        dao.deleteImage(ids[2])
+
+        assertEquals(listOf("/b.jpg"), dao.getImagePaths())
+    }
+
+    /** Hace fallar dentro de la base la inserción de una imagen con [path], sin cambiar el esquema. */
+    private fun failInsertsOfPath(path: String) {
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TEMP TRIGGER fail_image BEFORE INSERT ON note_images WHEN NEW.path = '$path' " +
+                "BEGIN SELECT RAISE(ABORT, 'forced failure'); END",
+        )
+    }
+
+    private fun notesInTable(): List<String> =
+        database.query("SELECT title FROM notes", null).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
 
     /** Lee la tabla directamente para comprobar que no quedan filas huérfanas. */
     private fun imagesInTable(): List<Pair<Long, String>> =

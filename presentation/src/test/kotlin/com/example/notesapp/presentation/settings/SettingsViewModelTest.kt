@@ -3,10 +3,12 @@ package com.example.notesapp.presentation.settings
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.GetThemeModeUseCase
 import com.example.notesapp.domain.settings.NotesView
+import com.example.notesapp.domain.settings.SetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.SetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.SetNotesViewUseCase
 import com.example.notesapp.domain.settings.SetThemeModeUseCase
@@ -35,6 +37,8 @@ class SettingsViewModelTest {
         SetDefaultNoteColorUseCase(repository),
         GetNotesViewUseCase(repository),
         SetNotesViewUseCase(repository),
+        GetAutoSaveEnabledUseCase(repository),
+        SetAutoSaveEnabledUseCase(repository),
     )
 
     private suspend fun createViewModelWithTheme(mode: ThemeMode?): SettingsViewModel {
@@ -49,6 +53,11 @@ class SettingsViewModelTest {
 
     private suspend fun createViewModelWithNotesView(view: NotesView?): SettingsViewModel {
         repository.emitStoredNotesView(view)
+        return createViewModel()
+    }
+
+    private suspend fun createViewModelWithAutoSave(enabled: Boolean?): SettingsViewModel {
+        repository.emitStoredAutoSaveEnabled(enabled)
         return createViewModel()
     }
 
@@ -665,5 +674,177 @@ class SettingsViewModelTest {
             assertEquals(SettingsEffect.ShowDefaultColorSaveError, awaitItem())
             expectNoEvents()
         }
+    }
+
+    @Test
+    fun `given no auto save emission yet when created then state shows auto save enabled`() {
+        val viewModel = createViewModel()
+
+        assertTrue(viewModel.state.value.isAutoSaveEnabled)
+    }
+
+    @Test
+    fun `given stored auto save off when created then state shows it off`() = runTest {
+        val viewModel = createViewModelWithAutoSave(false)
+
+        viewModel.state.test {
+            assertFalse(awaitItem().isAutoSaveEnabled)
+        }
+    }
+
+    @Test
+    fun `given repository without auto save when created then state shows it on`() = runTest {
+        val viewModel = createViewModelWithAutoSave(null)
+
+        viewModel.state.test {
+            assertTrue(awaitItem().isAutoSaveEnabled)
+        }
+    }
+
+    @Test
+    fun `given stored auto save when it changes elsewhere then state follows it`() = runTest {
+        val viewModel = createViewModelWithAutoSave(true)
+
+        viewModel.state.test {
+            assertTrue(awaitItem().isAutoSaveEnabled)
+
+            repository.emitStoredAutoSaveEnabled(false)
+
+            assertFalse(awaitItem().isAutoSaveEnabled)
+        }
+    }
+
+    @Test
+    fun `given auto save on when toggled then saves it off and state reflects it without effects`() = runTest {
+        val viewModel = createViewModelWithAutoSave(true)
+
+        viewModel.effects.test {
+            viewModel.state.test {
+                assertTrue(awaitItem().isAutoSaveEnabled)
+
+                viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+
+                assertFalse(awaitItem().isAutoSaveEnabled)
+            }
+            expectNoEvents()
+        }
+        assertEquals(listOf(false), repository.savedAutoSaveEnabled)
+    }
+
+    @Test
+    fun `given auto save off when toggled then saves it on and state reflects it`() = runTest {
+        val viewModel = createViewModelWithAutoSave(false)
+
+        viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+
+        assertEquals(listOf(true), repository.savedAutoSaveEnabled)
+        assertTrue(viewModel.state.value.isAutoSaveEnabled)
+    }
+
+    @Test
+    fun `given auto save toggled twice when each save completes then saves both values in order`() = runTest {
+        val viewModel = createViewModelWithAutoSave(true)
+
+        viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+        viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+
+        assertEquals(listOf(false, true), repository.savedAutoSaveEnabled)
+        assertTrue(viewModel.state.value.isAutoSaveEnabled)
+    }
+
+    @Test
+    fun `given toggle does not change other settings when toggled then theme color and view stay`() = runTest {
+        repository.emitStored(ThemeMode.LIGHT)
+        repository.emitStoredDefaultNoteColor(NoteColor.MINT)
+        repository.emitStoredNotesView(NotesView.LIST)
+        val viewModel = createViewModelWithAutoSave(true)
+
+        viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+
+        assertEquals(
+            SettingsUiState(
+                themeMode = ThemeMode.LIGHT,
+                defaultNoteColor = NoteColor.MINT,
+                notesView = NotesView.LIST,
+                isAutoSaveEnabled = false,
+            ),
+            viewModel.state.value,
+        )
+        assertTrue(repository.savedModes.isEmpty())
+        assertTrue(repository.savedDefaultNoteColors.isEmpty())
+        assertTrue(repository.savedNotesViews.isEmpty())
+    }
+
+    @Test
+    fun `given save fails when auto save toggled then emits its error and keeps chosen state`() = runTest {
+        repository.autoSaveSaveResult = AppResult.Error(SettingsError.Storage)
+        val viewModel = createViewModelWithAutoSave(true)
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+
+            assertEquals(SettingsEffect.ShowAutoSaveSaveError, awaitItem())
+            expectNoEvents()
+        }
+        assertFalse(viewModel.state.value.isAutoSaveEnabled)
+    }
+
+    @Test
+    fun `given failed save when toggled again then uses state kept for the session`() = runTest {
+        repository.autoSaveSaveResult = AppResult.Error(SettingsError.Storage)
+        val viewModel = createViewModelWithAutoSave(true)
+        viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+
+        viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+
+        assertEquals(listOf(false, true), repository.savedAutoSaveEnabled)
+        assertTrue(viewModel.state.value.isAutoSaveEnabled)
+    }
+
+    @Test
+    fun `given auto save save fails when other three settings change then only auto save error is emitted`() = runTest {
+        repository.autoSaveSaveResult = AppResult.Error(SettingsError.Storage)
+        repository.emitStored(ThemeMode.DARK)
+        repository.emitStoredDefaultNoteColor(NoteColor.LAVENDER)
+        repository.emitStoredNotesView(NotesView.GRID)
+        val viewModel = createViewModelWithAutoSave(true)
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.ThemeSelected(ThemeMode.LIGHT))
+            viewModel.onIntent(SettingsIntent.DefaultColorRowClicked)
+            viewModel.onIntent(SettingsIntent.DefaultColorOptionSelected(NoteColor.ROSE))
+            viewModel.onIntent(SettingsIntent.DefaultColorApplied)
+            viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+            viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+
+            assertEquals(SettingsEffect.ShowAutoSaveSaveError, awaitItem())
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given other three saves fail when auto save also toggles then auto save error is not emitted`() = runTest {
+        repository.saveResult = AppResult.Error(SettingsError.Storage)
+        repository.defaultNoteColorSaveResult = AppResult.Error(SettingsError.Storage)
+        repository.notesViewSaveResult = AppResult.Error(SettingsError.Storage)
+        repository.emitStored(ThemeMode.DARK)
+        repository.emitStoredDefaultNoteColor(NoteColor.LAVENDER)
+        repository.emitStoredNotesView(NotesView.GRID)
+        val viewModel = createViewModelWithAutoSave(true)
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.AutoSaveToggled)
+            viewModel.onIntent(SettingsIntent.ThemeSelected(ThemeMode.LIGHT))
+            viewModel.onIntent(SettingsIntent.DefaultColorRowClicked)
+            viewModel.onIntent(SettingsIntent.DefaultColorOptionSelected(NoteColor.ROSE))
+            viewModel.onIntent(SettingsIntent.DefaultColorApplied)
+            viewModel.onIntent(SettingsIntent.NotesViewSelected(NotesView.LIST))
+
+            assertEquals(SettingsEffect.ShowThemeSaveError, awaitItem())
+            assertEquals(SettingsEffect.ShowDefaultColorSaveError, awaitItem())
+            assertEquals(SettingsEffect.ShowNotesViewSaveError, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(listOf(false), repository.savedAutoSaveEnabled)
     }
 }

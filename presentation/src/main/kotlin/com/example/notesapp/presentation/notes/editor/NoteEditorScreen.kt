@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -91,6 +92,7 @@ import com.example.notesapp.presentation.notes.common.labelRes
 import com.example.notesapp.presentation.notes.common.TaskTextStyle
 import com.example.notesapp.presentation.notes.common.asText
 import com.example.notesapp.presentation.notes.common.toContainerColor
+import com.example.notesapp.presentation.theme.DisabledAlpha
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
 import java.io.File
@@ -123,6 +125,11 @@ object NoteEditorTestTags {
     const val COLOR_PREVIEW = ColorPickerTestTags.PREVIEW
     const val COLOR_APPLY = ColorPickerTestTags.APPLY
     const val COLOR_CLOSE = ColorPickerTestTags.CLOSE
+    const val SAVE = "note_editor_save"
+    const val LEAVE_DIALOG = "note_editor_leave_dialog"
+    const val LEAVE_SAVE = "note_editor_leave_save"
+    const val LEAVE_DISCARD = "note_editor_leave_discard"
+    const val LEAVE_CANCEL = "note_editor_leave_cancel"
 }
 
 @Composable
@@ -145,6 +152,8 @@ fun NoteEditorScreen(
                 NoteEditorTopBar(
                     isPinned = state.isPinned,
                     showNoteActions = state.isNoteVisible,
+                    showSaveButton = state.isManualSave,
+                    canSave = state.hasUnsavedChanges,
                     onIntent = onIntent,
                 )
                 when {
@@ -164,6 +173,9 @@ fun NoteEditorScreen(
         }
     }
 
+    if (state.isLeaveDialogVisible) {
+        LeaveNoteDialog(onIntent = onIntent)
+    }
     if (state.isDeleteDialogVisible) {
         DeleteNoteDialog(onIntent = onIntent)
     }
@@ -176,6 +188,8 @@ fun NoteEditorScreen(
 private fun NoteEditorTopBar(
     isPinned: Boolean,
     showNoteActions: Boolean,
+    showSaveButton: Boolean,
+    canSave: Boolean,
     onIntent: (NoteEditorIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -194,7 +208,27 @@ private fun NoteEditorTopBar(
             modifier = Modifier.testTag(NoteEditorTestTags.BACK),
         )
         if (showNoteActions) {
-            Row(horizontalArrangement = Arrangement.spacedBy(NotesTheme.spacing.xxs)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(NotesTheme.spacing.xxs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (showSaveButton) {
+                    // Con el guardado automático apagado, los cambios esperan a este botón.
+                    TextButton(
+                        onClick = { onIntent(NoteEditorIntent.SaveClicked) },
+                        enabled = canSave,
+                        modifier = Modifier
+                            .heightIn(min = NotesTheme.sizes.iconAction)
+                            .testTag(NoteEditorTestTags.SAVE),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = NotesTheme.accent.content,
+                            // Sobre el color de la nota, el gris no se distingue del acento: se atenúa el mismo color.
+                            disabledContentColor = NotesTheme.accent.content.copy(alpha = DisabledAlpha),
+                        ),
+                    ) {
+                        Text(text = stringResource(R.string.note_editor_save), style = MaterialTheme.typography.titleSmall)
+                    }
+                }
                 EditorIconButton(
                     // Relleno al estar fijada: sobre el color de la nota, el color de acento no la distingue.
                     iconRes = if (isPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin_outline,
@@ -787,12 +821,59 @@ private fun SaveStatusRow(
         }
         Text(
             text = stringResource(
-                if (status == SaveStatus.Saved) R.string.note_editor_saved else R.string.note_editor_saving,
+                when (status) {
+                    SaveStatus.Saved -> R.string.note_editor_saved
+                    SaveStatus.Unsaved -> R.string.note_editor_unsaved
+                    else -> R.string.note_editor_saving
+                },
             ),
             style = MaterialTheme.typography.labelMedium,
             color = color,
         )
     }
+}
+
+/** Al salir con cambios sin guardar (guardado automático apagado). Mismo estilo que [DeleteNoteDialog]. */
+@Composable
+private fun LeaveNoteDialog(
+    onIntent: (NoteEditorIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val buttonColors = ButtonDefaults.textButtonColors(contentColor = NotesTheme.accent.content)
+    AlertDialog(
+        onDismissRequest = { onIntent(NoteEditorIntent.LeaveDialogDismissed) },
+        confirmButton = {
+            TextButton(
+                onClick = { onIntent(NoteEditorIntent.LeaveSaveClicked) },
+                modifier = Modifier.testTag(NoteEditorTestTags.LEAVE_SAVE),
+                colors = buttonColors,
+            ) {
+                Text(text = stringResource(R.string.note_editor_leave_save))
+            }
+        },
+        modifier = modifier.testTag(NoteEditorTestTags.LEAVE_DIALOG),
+        dismissButton = {
+            Row {
+                TextButton(
+                    onClick = { onIntent(NoteEditorIntent.LeaveDialogDismissed) },
+                    modifier = Modifier.testTag(NoteEditorTestTags.LEAVE_CANCEL),
+                    colors = buttonColors,
+                ) {
+                    Text(text = stringResource(R.string.note_editor_leave_cancel))
+                }
+                TextButton(
+                    onClick = { onIntent(NoteEditorIntent.LeaveDiscardClicked) },
+                    modifier = Modifier.testTag(NoteEditorTestTags.LEAVE_DISCARD),
+                    colors = buttonColors,
+                ) {
+                    Text(text = stringResource(R.string.note_editor_leave_discard))
+                }
+            }
+        },
+        title = { Text(text = stringResource(R.string.note_editor_leave_title)) },
+        text = { Text(text = stringResource(R.string.note_editor_leave_message)) },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    )
 }
 
 @Composable
