@@ -13,11 +13,19 @@ class FakeNoteRepository(
     val addedImages = mutableListOf<Pair<Long, List<String>>>()
     val removedImageIds = mutableListOf<Long>()
 
+    /** Llamadas a [saveNoteChanges], en orden. */
+    val savedChanges = mutableListOf<SavedChanges>()
+
+    /** Rutas que devuelve [getImagePaths]. */
+    var imagePaths: Set<String> = emptySet()
+
     /** Falla en todas las operaciones. */
     var failure: NoteError? = null
     var deleteFailure: NoteError? = null
     var addImagesFailure: NoteError? = null
     var removeImageFailure: NoteError? = null
+    var saveNoteChangesFailure: NoteError? = null
+    var getImagePathsFailure: NoteError? = null
     private var nextId = 100L
     private var nextImageId = 500L
 
@@ -53,4 +61,28 @@ class FakeNoteRepository(
         removedImageIds += imageId
         return AppResult.Success(Unit)
     }
+
+    override suspend fun saveNoteChanges(
+        note: Note,
+        addedPaths: List<String>,
+        removedImageIds: List<Long>,
+    ): AppResult<Note, NoteError> {
+        (failure ?: saveNoteChangesFailure)?.let { return AppResult.Error(it) }
+        savedChanges += SavedChanges(note, addedPaths, removedImageIds)
+        val id = if (note.id == Note.NEW_ID) nextId++ else note.id
+        val images = note.images.filterNot { it.id in removedImageIds } +
+            addedPaths.map { NoteImage(id = nextImageId++, path = it) }
+        return AppResult.Success(note.copy(id = id, images = images))
+    }
+
+    override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> {
+        (failure ?: getImagePathsFailure)?.let { return AppResult.Error(it) }
+        return AppResult.Success(imagePaths)
+    }
+
+    data class SavedChanges(
+        val note: Note,
+        val addedPaths: List<String>,
+        val removedImageIds: List<Long>,
+    )
 }

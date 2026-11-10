@@ -277,6 +277,110 @@ class NoteRepositoryImplTest {
         assertEquals(emptyList<ChecklistItem>(), (repository.getNote(1) as AppResult.Success).data.contentTasks)
     }
 
+    @Test
+    fun `given new note when saving changes then inserts it with its added images and returns it`() = runTest {
+        val result = repository.saveNoteChanges(
+            note(id = Note.NEW_ID, title = "Viaje"),
+            addedPaths = listOf("/a.jpg", "/b.jpg"),
+            removedImageIds = emptyList(),
+        )
+
+        assertEquals(
+            AppResult.Success(
+                note(id = 1, title = "Viaje").copy(images = listOf(NoteImage(1, "/a.jpg"), NoteImage(2, "/b.jpg"))),
+            ),
+            result,
+        )
+        assertEquals("Viaje", dao.stored.single().title)
+        assertEquals(listOf(1L, 1L), dao.storedImages.map { it.noteId })
+    }
+
+    @Test
+    fun `given existing note when saving changes then updates it, removes and adds images`() = runTest {
+        dao.insertAll(listOf(entity))
+        repository.addImages(1, listOf("/a.jpg", "/b.jpg"))
+        val stored = (repository.getNote(1) as AppResult.Success).data
+
+        val result = repository.saveNoteChanges(
+            stored.copy(title = "Editada", updatedAt = 99),
+            addedPaths = listOf("/c.jpg"),
+            removedImageIds = listOf(1),
+        )
+
+        assertEquals(
+            AppResult.Success(
+                stored.copy(title = "Editada", updatedAt = 99, images = listOf(NoteImage(2, "/b.jpg"), NoteImage(3, "/c.jpg"))),
+            ),
+            result,
+        )
+        assertEquals("Editada", dao.stored.single().title)
+        assertEquals(listOf("/b.jpg", "/c.jpg"), dao.storedImages.map { it.path })
+    }
+
+    @Test
+    fun `given existing note without image changes when saving changes then keeps its images`() = runTest {
+        dao.insertAll(listOf(entity))
+        repository.addImages(1, listOf("/a.jpg"))
+        val stored = (repository.getNote(1) as AppResult.Success).data
+
+        val result = repository.saveNoteChanges(stored.copy(title = "Editada"), emptyList(), emptyList())
+
+        assertEquals(AppResult.Success(stored.copy(title = "Editada")), result)
+        assertEquals(listOf("/a.jpg"), dao.storedImages.map { it.path })
+    }
+
+    @Test
+    fun `given deleted note when saving changes then returns not found and attaches no images`() = runTest {
+        val result = repository.saveNoteChanges(
+            note(id = 9, title = "Fantasma"),
+            addedPaths = listOf("/a.jpg"),
+            removedImageIds = emptyList(),
+        )
+
+        assertEquals(AppResult.Error(NoteError.NotFound), result)
+        assertTrue(dao.stored.isEmpty())
+        assertTrue(dao.storedImages.isEmpty())
+    }
+
+    @Test
+    fun `given database failure when saving changes then returns storage error`() = runTest {
+        dao.failure = SQLiteException("disk full")
+
+        val result = repository.saveNoteChanges(note(id = Note.NEW_ID, title = "x"), listOf("/a.jpg"), emptyList())
+
+        assertEquals(AppResult.Error(NoteError.Storage), result)
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `given unexpected failure when saving changes then rethrows it`() = runTest {
+        dao.failure = IllegalStateException("bug")
+
+        repository.saveNoteChanges(note(id = Note.NEW_ID, title = "x"), emptyList(), emptyList())
+    }
+
+    @Test
+    fun `given images in several notes when getting image paths then returns all of them`() = runTest {
+        dao.insertAll(listOf(entity, entity.copy(title = "Otra")))
+        repository.addImages(1, listOf("/a.jpg", "/b.jpg"))
+        repository.addImages(2, listOf("/c.jpg"))
+
+        assertEquals(AppResult.Success(setOf("/a.jpg", "/b.jpg", "/c.jpg")), repository.getImagePaths())
+    }
+
+    @Test
+    fun `given no images when getting image paths then returns an empty set`() = runTest {
+        dao.insertAll(listOf(entity))
+
+        assertEquals(AppResult.Success(emptySet<String>()), repository.getImagePaths())
+    }
+
+    @Test
+    fun `given database failure when getting image paths then returns storage error`() = runTest {
+        dao.failure = SQLiteException("disk I/O error")
+
+        assertEquals(AppResult.Error(NoteError.Storage), repository.getImagePaths())
+    }
+
     private suspend fun ReceiveTurbine<AppResult<List<Note>, NoteError>>.awaitImages() =
         (awaitItem() as AppResult.Success).data.single().images
 

@@ -2,6 +2,7 @@ package com.example.notesapp.data.settings
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.notesapp.common.result.AppResult
@@ -37,6 +38,9 @@ internal class SettingsRepositoryImpl @Inject constructor(
 
     /** Última vista elegida en esta sesión; tiene prioridad sobre lo leído, como [chosenThemeMode]. */
     private val chosenNotesView = MutableStateFlow<NotesView?>(null)
+
+    /** Último estado del guardado automático elegido en esta sesión; tiene prioridad sobre lo leído. */
+    private val chosenAutoSaveEnabled = MutableStateFlow<Boolean?>(null)
 
     override fun observeThemeMode(): Flow<ThemeMode?> =
         combine(storedThemeMode(), chosenThemeMode) { stored, chosen -> chosen ?: stored }
@@ -80,6 +84,20 @@ internal class SettingsRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun observeAutoSaveEnabled(): Flow<Boolean?> =
+        combine(storedAutoSaveEnabled(), chosenAutoSaveEnabled) { stored, chosen -> chosen ?: stored }
+            .distinctUntilChanged()
+
+    override suspend fun setAutoSaveEnabled(enabled: Boolean): AppResult<Unit, SettingsError> {
+        chosenAutoSaveEnabled.value = enabled
+        return try {
+            dataStore.edit { it[AUTO_SAVE_ENABLED] = enabled }
+            AppResult.Success(Unit)
+        } catch (_: IOException) {
+            AppResult.Error(SettingsError.Storage)
+        }
+    }
+
     private fun storedThemeMode(): Flow<ThemeMode?> =
         dataStore.data
             .map { it[THEME_MODE].toThemeModeOrNull() }
@@ -95,9 +113,16 @@ internal class SettingsRepositoryImpl @Inject constructor(
             .map { it[NOTES_VIEW].toNotesViewOrNull() }
             .catch { error -> if (error is IOException) emit(null) else throw error }
 
+    // Un booleano se guarda tal cual: no hace falta un valor estable propio, como con los enums.
+    private fun storedAutoSaveEnabled(): Flow<Boolean?> =
+        dataStore.data
+            .map { it[AUTO_SAVE_ENABLED] }
+            .catch { error -> if (error is IOException) emit(null) else throw error }
+
     private companion object {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DEFAULT_NOTE_COLOR = stringPreferencesKey("default_note_color")
         val NOTES_VIEW = stringPreferencesKey("notes_view")
+        val AUTO_SAVE_ENABLED = booleanPreferencesKey("auto_save_enabled")
     }
 }

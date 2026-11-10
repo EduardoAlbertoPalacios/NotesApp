@@ -33,6 +33,12 @@ sealed interface NoteEditorIntent {
     data object DeleteConfirmed : NoteEditorIntent
     data object DeleteDismissed : NoteEditorIntent
     data object BackClicked : NoteEditorIntent
+    /** Botón Guardar, solo con el guardado automático apagado. */
+    data object SaveClicked : NoteEditorIntent
+    data object LeaveSaveClicked : NoteEditorIntent
+    data object LeaveDiscardClicked : NoteEditorIntent
+    /** Cancelar o cerrar el diálogo de salida: sigue en el editor con los cambios. */
+    data object LeaveDialogDismissed : NoteEditorIntent
     /** Deshace el último paso de edición del título o del contenido. */
     data object UndoClicked : NoteEditorIntent
     /** La pantalla ya movió el foco pedido por la petición [id]: no debe repetirse, por ejemplo al girar. */

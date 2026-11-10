@@ -35,6 +35,13 @@
     <string name="note_editor_content_placeholder">Escribe tu nota…</string>
     <string name="note_editor_saving">Guardando…</string>
     <string name="note_editor_saved">Todos los cambios guardados</string>
+    <string name="note_editor_unsaved">Cambios sin guardar</string>
+    <string name="note_editor_save">Guardar</string>
+    <string name="note_editor_leave_title">¿Guardar los cambios?</string>
+    <string name="note_editor_leave_message">Si sales sin guardar, perderás los cambios.</string>
+    <string name="note_editor_leave_save">Guardar</string>
+    <string name="note_editor_leave_discard">Descartar</string>
+    <string name="note_editor_leave_cancel">Cancelar</string>
     <string name="note_editor_category_title">Categoría</string>
     <string name="note_category_work">Trabajo</string>
     <string name="note_category_work_description">Proyectos, reuniones y tareas</string>
@@ -103,7 +110,7 @@
     <string name="notes_view_save_error">No se pudo guardar la vista</string>
     <string name="settings_auto_save">Guardado automático</string>
     <string name="settings_auto_save_detail">Guarda mientras escribes</string>
-    <string name="settings_auto_save_on">Activado</string>
+    <string name="settings_auto_save_error">No se pudo guardar el guardado automático</string>
     <string name="settings_export">Exportar notas</string>
     <string name="settings_export_detail">Crea una copia de tus ideas</string>
     <string name="settings_trash">Papelera</string>

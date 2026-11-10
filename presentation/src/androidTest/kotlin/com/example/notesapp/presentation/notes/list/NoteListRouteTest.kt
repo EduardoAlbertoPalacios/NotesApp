@@ -162,6 +162,14 @@ private class SingleNoteRepository(private val note: Note) : NoteRepository {
         AppResult.Error(NoteError.Storage)
 
     override suspend fun removeImage(imageId: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun saveNoteChanges(
+        note: Note,
+        addedPaths: List<String>,
+        removedImageIds: List<Long>,
+    ): AppResult<Note, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> = AppResult.Error(NoteError.Storage)
 }
 
 /** Como el repositorio real, un fallo al guardar mantiene la vista elegida durante la sesión. */
@@ -190,4 +198,9 @@ private class FailingSaveSettingsRepository : SettingsRepository {
         notesView.value = view
         return AppResult.Error(SettingsError.Storage)
     }
+
+    override fun observeAutoSaveEnabled(): Flow<Boolean?> = flowOf(null)
+
+    override suspend fun setAutoSaveEnabled(enabled: Boolean): AppResult<Unit, SettingsError> =
+        AppResult.Error(SettingsError.Storage)
 }

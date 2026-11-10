@@ -43,6 +43,11 @@ data class NoteEditorUiState(
     val canUndo: Boolean = false,
     /** Campo que debe recibir el foco tras deshacer; nulo si no hay ninguna petición o ya se atendió. */
     val focusRequest: FocusRequest? = null,
+    /** Guardado automático apagado al abrir la nota: los cambios esperan al botón Guardar. */
+    val isManualSave: Boolean = false,
+    /** Con [isManualSave], si la nota difiere de su última versión guardada. */
+    val hasUnsavedChanges: Boolean = false,
+    val isLeaveDialogVisible: Boolean = false,
 ) {
     /** La nota ya cargó sin error: solo entonces se pinta su color y se muestran sus acciones. */
     val isNoteVisible: Boolean get() = !isLoading && loadError == null
@@ -54,6 +59,6 @@ data class NoteEditorUiState(
  */
 data class FocusRequest(val field: EditField, val id: Long)
 
-enum class SaveStatus { Idle, Saving, Saved }
+enum class SaveStatus { Idle, Saving, Saved, Unsaved }
 
 enum class LoadError { NotFound, Storage }

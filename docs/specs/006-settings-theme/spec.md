@@ -34,11 +34,11 @@ El botón de ajustes de Mis notas se ve, pero no lleva a ninguna parte. Además,
 - **RF-8:** EL SISTEMA mostrará al final de la pantalla el nombre de la app y su versión instalada.
 
 ### Opciones deshabilitadas
-- **RF-9:** EL SISTEMA mostrará atenuadas las filas Guardado automático, Exportar notas, Papelera y Ayuda y comentarios (la fila Color predeterminado funciona desde la spec 007 y la fila Vista de notas, desde la spec 008).
+- **RF-9:** EL SISTEMA mostrará atenuadas las filas Exportar notas, Papelera y Ayuda y comentarios (la fila Color predeterminado funciona desde la spec 007, la fila Vista de notas desde la spec 008 y la fila Guardado automático desde la spec 009).
 - **RF-10:** CUANDO el usuario toque una fila atenuada, EL SISTEMA no realizará ninguna acción.
 - **RF-11:** EL SISTEMA mostrará en la fila Color predeterminado el nombre del color vigente (sustituido por la spec 007, RF-3).
 - **RF-12:** EL SISTEMA mostrará en la fila Vista de notas el nombre de la vista vigente (sustituido por la spec 008, RF-8).
-- **RF-13:** EL SISTEMA mostrará activado el interruptor de Guardado automático.
+- **RF-13:** EL SISTEMA mostrará el interruptor de Guardado automático según su estado vigente (sustituido por la spec 009, RF-2).
 - **RF-14:** EL SISTEMA mostrará «Próximamente» como descripción de la fila Papelera.
 - **RF-15:** EL SISTEMA no mostrará ningún valor en la fila Papelera.
 
@@ -94,11 +94,11 @@ El botón de ajustes de Mis notas se ve, pero no lleva a ninguna parte. Además,
 - **CL-7.** Cerrar la app por completo después de elegir un tema y volver a abrirla: se abre con ese tema (RF-23).
 - **CL-8.** Nota con color en tema Claro: el editor y la tarjeta usan el color de la nota con texto oscuro, igual que en Oscuro. El frame `40:1037` muestra una nota Cielo con fondo claro, pero se mantiene el comportamiento de la spec 003 (RF-33).
 - **CL-9.** La versión instalada no coincide con el «1.0.0» del diseño: se muestra la versión instalada (RF-8).
-- **CL-10.** Tocar el interruptor de Guardado automático: no cambia y el editor sigue guardando solo (RF-10, RF-13).
+- **CL-10.** Tocar el interruptor de Guardado automático: lo cubre la spec 009.
 
 ## Fuera de alcance
 
-- Hacer funcionar Guardado automático, Exportar notas, Papelera y Ayuda y comentarios; cada una necesitará su propia spec.
+- Hacer funcionar Exportar notas, Papelera y Ayuda y comentarios; cada una necesitará su propia spec.
 - Una opción para seguir el modo claro u oscuro del teléfono.
 - Colores dinámicos del sistema y temas distintos de Claro y Oscuro.
 - Cambiar los colores de las notas o agregar colores nuevos.

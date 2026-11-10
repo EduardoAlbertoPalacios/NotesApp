@@ -13,6 +13,8 @@ class FakeSettingsRepository : SettingsRepository {
     val savedDefaultNoteColors = mutableListOf<NoteColor>()
     val notesView = MutableStateFlow<NotesView?>(null)
     val savedNotesViews = mutableListOf<NotesView>()
+    val autoSaveEnabled = MutableStateFlow<Boolean?>(null)
+    val savedAutoSaveEnabled = mutableListOf<Boolean>()
     var failure: SettingsError? = null
 
     override fun observeThemeMode(): Flow<ThemeMode?> = themeMode
@@ -39,6 +41,15 @@ class FakeSettingsRepository : SettingsRepository {
         failure?.let { return AppResult.Error(it) }
         savedNotesViews += view
         notesView.value = view
+        return AppResult.Success(Unit)
+    }
+
+    override fun observeAutoSaveEnabled(): Flow<Boolean?> = autoSaveEnabled
+
+    override suspend fun setAutoSaveEnabled(enabled: Boolean): AppResult<Unit, SettingsError> {
+        failure?.let { return AppResult.Error(it) }
+        savedAutoSaveEnabled += enabled
+        autoSaveEnabled.value = enabled
         return AppResult.Success(Unit)
     }
 }

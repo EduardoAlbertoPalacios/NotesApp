@@ -7,10 +7,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.AddNoteImagesUseCase
+import com.example.notesapp.domain.notes.CleanUpImageFilesUseCase
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
+import com.example.notesapp.domain.notes.DiscardImageCopiesUseCase
 import com.example.notesapp.domain.notes.EditField
 import com.example.notesapp.domain.notes.EditKind
 import com.example.notesapp.domain.notes.GetNoteUseCase
+import com.example.notesapp.domain.notes.ImportNoteImagesUseCase
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteChecklist
@@ -21,11 +24,13 @@ import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteUndo
 import com.example.notesapp.domain.notes.RemoveNoteImageUseCase
 import com.example.notesapp.domain.notes.RestoreNoteUseCase
+import com.example.notesapp.domain.notes.SaveNoteChangesUseCase
 import com.example.notesapp.domain.notes.SaveNoteUseCase
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.domain.notes.UndoEdit
 import com.example.notesapp.domain.notes.UndoHistory
 import com.example.notesapp.domain.notes.UndoSnapshot
+import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.presentation.R
 import com.example.notesapp.presentation.notes.common.NoteDateFormatter
@@ -49,7 +54,7 @@ import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class NoteEditorViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val getNote: GetNoteUseCase,
     private val saveNote: SaveNoteUseCase,
     private val restoreNote: RestoreNoteUseCase,
@@ -58,6 +63,11 @@ class NoteEditorViewModel @Inject constructor(
     private val removeNoteImage: RemoveNoteImageUseCase,
     private val dateFormatter: NoteDateFormatter,
     private val getDefaultNoteColor: GetDefaultNoteColorUseCase,
+    private val getAutoSaveEnabled: GetAutoSaveEnabledUseCase,
+    private val importNoteImages: ImportNoteImagesUseCase,
+    private val saveNoteChanges: SaveNoteChangesUseCase,
+    private val discardImageCopies: DiscardImageCopiesUseCase,
+    private val cleanUpImageFiles: CleanUpImageFilesUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NoteEditorUiState())
@@ -92,6 +102,17 @@ class NoteEditorViewModel @Inject constructor(
     private var undoPauseJob: Job? = null
     /** Id de la última petición de foco; crece en cada deshacer. */
     private var focusRequestId = 0L
+    /** Guardado automático apagado al abrir la nota; no cambia durante la sesión. */
+    private var isManualSave = false
+    /** Modo manual: imágenes agregadas, ya copiadas pero aún sin asociar; sus ids son negativos y provisionales. */
+    private var pendingImages = emptyList<NoteImage>()
+    private var pendingImageId = 0L
+    /** Modo manual: imágenes guardadas que el usuario quitó; se borran al guardar. */
+    private var removedImages = emptyList<NoteImage>()
+    /** Modo manual: si ya se guardó algo en esta sesión, para la línea de estado. */
+    private var hasSavedInSession = false
+    /** Modo manual: copia de imágenes en curso; hay que esperarla antes de decidir si hay cambios al salir. */
+    private var importJob: Job? = null
 
     init {
         val noteId = savedStateHandle.get<Long>(NOTE_ID_ARG) ?: Note.NEW_ID
@@ -128,6 +149,10 @@ class NoteEditorViewModel @Inject constructor(
             NoteEditorIntent.DeleteDismissed -> _state.update { it.copy(isDeleteDialogVisible = false) }
             NoteEditorIntent.DeleteConfirmed -> delete()
             NoteEditorIntent.BackClicked -> leave()
+            NoteEditorIntent.SaveClicked -> viewModelScope.launch { saveManually() }
+            NoteEditorIntent.LeaveSaveClicked -> leaveSaving()
+            NoteEditorIntent.LeaveDiscardClicked -> leaveDiscarding()
+            NoteEditorIntent.LeaveDialogDismissed -> _state.update { it.copy(isLeaveDialogVisible = false) }
             NoteEditorIntent.UndoClicked -> undo()
             is NoteEditorIntent.FocusRequestHandled -> _state.update {
                 if (it.focusRequest?.id == intent.id) it.copy(focusRequest = null) else it
@@ -135,18 +160,46 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
-    /** La nota nueva se muestra al conocer su color: así no se ve otro un instante ni se escribe antes. */
+    /**
+     * La nota nueva se muestra al conocer su color y el modo de guardado: así no se ve otro color un instante
+     * ni se escribe antes.
+     */
     private fun loadDefaultColor() {
         viewModelScope.launch {
             val color = getDefaultNoteColor().first()
+            isManualSave = !getAutoSaveEnabled().first()
             note = note.copy(color = color)
-            _state.update { it.copy(isLoading = false, color = color) }
+            _state.update { it.copy(isLoading = false, color = color, isManualSave = isManualSave) }
+            restoreDraft()
         }
+    }
+
+    /** Modo manual: vuelve a poner los cambios sin guardar que el sistema conservó al cerrar la app. */
+    private fun restoreDraft() {
+        if (!isManualSave) return
+        val draft = EditorDraftCodec.read(savedStateHandle) ?: return
+        pendingImages = draft.pendingImagePaths.map { NoteImage(id = --pendingImageId, path = it) }
+        removedImages = note.images.filter { it.id in draft.removedImageIds }
+        _state.update {
+            it.copy(
+                title = TextFieldValue(draft.title, TextRange(draft.title.length)),
+                content = TextFieldValue(draft.content, TextRange(draft.content.length)),
+                contentSpans = draft.contentSpans,
+                contentTasks = draft.contentTasks,
+                isPinned = draft.isPinned,
+                category = draft.category,
+                color = draft.color,
+                images = visibleImages(),
+            )
+        }
+        refreshPending()
     }
 
     private fun load(id: Long) {
         _state.update { it.copy(isNewNote = false, isLoading = true) }
         viewModelScope.launch {
+            isManualSave = !getAutoSaveEnabled().first()
+            _state.update { it.copy(isManualSave = isManualSave) }
             when (val result = getNote(id)) {
                 is AppResult.Success -> {
                     note = result.data
@@ -165,6 +218,7 @@ class NoteEditorViewModel @Inject constructor(
                             date = dateFormatter.format(note.updatedAt),
                         )
                     }
+                    restoreDraft()
                 }
                 is AppResult.Error -> _state.update {
                     it.copy(isLoading = false, loadError = result.error.toLoadError())
@@ -176,6 +230,10 @@ class NoteEditorViewModel @Inject constructor(
     private fun edit(transform: (NoteEditorUiState) -> NoteEditorUiState) {
         _state.update(transform)
         lastEditWasUndo = false
+        if (isManualSave) {
+            refreshPending()
+            return
+        }
         hasPendingChanges = true
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
@@ -334,6 +392,145 @@ class NoteEditorViewModel @Inject constructor(
         lastEditWasUndo = true
     }
 
+    /** Modo manual: lo que se ve son las imágenes guardadas, menos las quitadas, más las pendientes. */
+    private fun visibleImages(): List<NoteImage> = note.images - removedImages.toSet() + pendingImages
+
+    /**
+     * Modo manual: tras cada cambio, decide si hay algo sin guardar, actualiza el botón y la línea de estado,
+     * y guarda o borra el borrador. Una nota nueva sin título, contenido ni imágenes nunca tiene cambios.
+     */
+    private fun refreshPending() {
+        if (!isManualSave) return
+        val current = _state.value
+        val isEmptyNewNote = note.id == Note.NEW_ID && current.title.text.isBlank() &&
+            current.content.text.isBlank() && pendingImages.isEmpty()
+        val pending = !isEmptyNewNote &&
+            (hasUnsavedChanges() || pendingImages.isNotEmpty() || removedImages.isNotEmpty())
+        _state.update {
+            it.copy(
+                hasUnsavedChanges = pending,
+                saveStatus = when {
+                    pending -> SaveStatus.Unsaved
+                    it.saveStatus != SaveStatus.Unsaved -> it.saveStatus
+                    hasSavedInSession -> SaveStatus.Saved
+                    else -> SaveStatus.Idle
+                },
+            )
+        }
+        if (pending) {
+            EditorDraftCodec.write(
+                savedStateHandle,
+                EditorDraft(
+                    title = current.title.text,
+                    content = current.content.text,
+                    contentSpans = current.contentSpans,
+                    contentTasks = current.contentTasks,
+                    isPinned = current.isPinned,
+                    category = current.category,
+                    color = current.color,
+                    pendingImagePaths = pendingImages.map { it.path },
+                    removedImageIds = removedImages.map { it.id },
+                ),
+            )
+        } else {
+            EditorDraftCodec.clear(savedStateHandle)
+        }
+    }
+
+    /**
+     * Modo manual: guarda de una vez todos los cambios pendientes. Devuelve si quedó todo guardado; si falla,
+     * los cambios siguen pendientes y se avisa.
+     */
+    private suspend fun saveManually(): Boolean = saveMutex.withLock {
+        if (!_state.value.hasUnsavedChanges) return@withLock true
+        val current = _state.value
+        val draft = note.copy(
+            title = current.title.text,
+            content = current.content.text,
+            contentSpans = current.contentSpans,
+            contentTasks = current.contentTasks,
+            isPinned = current.isPinned,
+            category = current.category,
+            color = current.color,
+        )
+        _state.update { it.copy(saveStatus = SaveStatus.Saving) }
+        // Deshacer hasta la nota tal como se abrió, sin cambios de imágenes, recupera su fecha.
+        val opened = openedNote?.takeIf {
+            lastEditWasUndo && pendingImages.isEmpty() && removedImages.isEmpty() &&
+                draft.copy(updatedAt = it.updatedAt) == it
+        }
+        // Lo que se guarda ahora; las imágenes agregadas o quitadas mientras dura el guardado siguen pendientes.
+        val savedAdded = pendingImages
+        val savedRemoved = removedImages
+        val result = if (opened != null) {
+            restoreNote(opened)
+        } else {
+            saveNoteChanges(draft, savedAdded.map { it.path }, savedRemoved)
+        }
+        when (result) {
+            is AppResult.Success -> {
+                note = result.data
+                pendingImages = pendingImages - savedAdded.toSet()
+                removedImages = removedImages - savedRemoved.toSet()
+                hasSavedInSession = true
+                _state.update {
+                    it.copy(
+                        images = visibleImages(),
+                        date = dateFormatter.format(note.updatedAt),
+                        saveStatus = SaveStatus.Saved,
+                    )
+                }
+                refreshPending()
+                true
+            }
+            // Como con el guardado automático, vaciar una nota guardada no la borra: conserva su última versión.
+            is AppResult.Error if result.error == NoteError.EmptyNote -> {
+                _state.update { it.copy(saveStatus = SaveStatus.Unsaved) }
+                true
+            }
+            is AppResult.Error -> {
+                _state.update { it.copy(saveStatus = SaveStatus.Unsaved) }
+                send(NoteEditorEffect.ShowMessage(R.string.note_editor_save_error))
+                false
+            }
+        }
+    }
+
+    private fun leaveSaving() {
+        _state.update { it.copy(isLeaveDialogVisible = false) }
+        viewModelScope.launch {
+            if (saveManually()) finishSession()
+        }
+    }
+
+    private fun leaveDiscarding() {
+        _state.update { it.copy(isLeaveDialogVisible = false) }
+        viewModelScope.launch {
+            importJob?.join()
+            discardPendingImages()
+            EditorDraftCodec.clear(savedStateHandle)
+            finishSession()
+        }
+    }
+
+    /** Modo manual: los cambios pendientes se pierden con la nota eliminada. */
+    private suspend fun discardPendingChanges() {
+        discardPendingImages()
+        removedImages = emptyList()
+        EditorDraftCodec.clear(savedStateHandle)
+    }
+
+    private suspend fun discardPendingImages() {
+        discardImageCopies(pendingImages.map { it.path })
+        pendingImages = emptyList()
+    }
+
+    /** Cierra el editor tras borrar las copias de imágenes que ninguna nota usa (ver `CleanUpImageFilesUseCase`). */
+    private suspend fun finishSession() {
+        saveMutex.withLock { cleanUpImageFiles() }
+        send(NoteEditorEffect.NavigateBack)
+    }
+
     /** El campo que el paso no cambió se queda como está; si su texto difiere, el cursor va al final. */
     private fun TextFieldValue.restoredTo(text: String): TextFieldValue =
         if (this.text == text) this else TextFieldValue(text, TextRange(text.length))
@@ -376,6 +573,10 @@ class NoteEditorViewModel @Inject constructor(
     private fun saveNow(transform: (NoteEditorUiState) -> NoteEditorUiState) {
         _state.update(transform)
         lastEditWasUndo = false
+        if (isManualSave) {
+            refreshPending()
+            return
+        }
         hasPendingChanges = true
         autosaveJob?.cancel()
         viewModelScope.launch { save() }
@@ -425,6 +626,10 @@ class NoteEditorViewModel @Inject constructor(
 
     private fun addImages(uris: List<String>) {
         if (uris.isEmpty()) return
+        if (isManualSave) {
+            importImages(uris)
+            return
+        }
         viewModelScope.launch {
             saveMutex.withLock {
                 val current = _state.value
@@ -460,7 +665,40 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
+    /** Modo manual: copia las imágenes, que quedan pendientes hasta guardar. */
+    private fun importImages(uris: List<String>) {
+        val previous = importJob
+        importJob = viewModelScope.launch {
+            previous?.join()
+            when (val result = importNoteImages(uris)) {
+                is AppResult.Success -> {
+                    pendingImages = pendingImages + result.data.paths.map { NoteImage(id = --pendingImageId, path = it) }
+                    _state.update { it.copy(images = visibleImages()) }
+                    refreshPending()
+                    if (result.data.failedCount > 0) send(NoteEditorEffect.ShowMessage(R.string.note_editor_image_error))
+                }
+                is AppResult.Error -> send(NoteEditorEffect.ShowMessage(R.string.note_editor_image_error))
+            }
+        }
+    }
+
+    /** Modo manual: una imagen pendiente se borra ya; una guardada solo se oculta hasta guardar. */
+    private fun removeImageManually(image: NoteImage) {
+        if (image in pendingImages) {
+            pendingImages = pendingImages - image
+            viewModelScope.launch { discardImageCopies(listOf(image.path)) }
+        } else {
+            removedImages = removedImages + image
+        }
+        _state.update { it.copy(images = visibleImages()) }
+        refreshPending()
+    }
+
     private fun removeImage(image: NoteImage) {
+        if (isManualSave) {
+            removeImageManually(image)
+            return
+        }
         viewModelScope.launch {
             // Mismo candado que los guardados: evita pisar `note` con un guardado o una carga de imágenes en curso.
             saveMutex.withLock {
@@ -476,6 +714,18 @@ class NoteEditorViewModel @Inject constructor(
     }
 
     private fun leave() {
+        if (isManualSave) {
+            viewModelScope.launch {
+                // Una imagen que se está copiando también es un cambio: se espera antes de decidir.
+                importJob?.join()
+                if (_state.value.hasUnsavedChanges) {
+                    _state.update { it.copy(isLeaveDialogVisible = true) }
+                } else {
+                    finishSession()
+                }
+            }
+            return
+        }
         viewModelScope.launch {
             autosaveJob?.cancel()
             autosaveJob?.join()
@@ -483,7 +733,7 @@ class NoteEditorViewModel @Inject constructor(
             if (hasPendingChanges) return@launch
             // Una nota creada al agregar una imagen queda vacía si luego se quitan todas: no se conserva.
             if (note.id != Note.NEW_ID && note.isBlank) deleteNote(note.id)
-            send(NoteEditorEffect.NavigateBack)
+            finishSession()
         }
     }
 
@@ -493,12 +743,17 @@ class NoteEditorViewModel @Inject constructor(
         hasPendingChanges = false
         viewModelScope.launch {
             autosaveJob?.join()
+            importJob?.join()
             if (note.id == Note.NEW_ID) {
-                send(NoteEditorEffect.NavigateBack)
+                discardPendingChanges()
+                finishSession()
                 return@launch
             }
             when (deleteNote(note.id)) {
-                is AppResult.Success -> send(NoteEditorEffect.NavigateBack)
+                is AppResult.Success -> {
+                    discardPendingChanges()
+                    finishSession()
+                }
                 is AppResult.Error -> send(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error))
             }
         }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -70,7 +71,7 @@ internal object SettingsTestTags {
     const val NOTES_VIEW_OPTION = "settings_notes_view_option_"
 }
 
-/** Solo funcionan las filas Tema, Color predeterminado y Vista de notas; las demás se ven deshabilitadas hasta tener su propia spec. */
+/** Funcionan las filas Tema, Color predeterminado, Vista de notas y Guardado automático; las demás se ven deshabilitadas hasta tener su propia spec. */
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
@@ -176,13 +177,9 @@ private fun SettingsContent(
             )
         }
         SettingsGroup(titleRes = R.string.settings_section_notes) {
-            DisabledRow(
-                iconRes = R.drawable.ic_save,
-                titleRes = R.string.settings_auto_save,
-                detailRes = R.string.settings_auto_save_detail,
-                testTag = SettingsTestTags.AUTO_SAVE_ROW,
-                valueRes = R.string.settings_auto_save_on,
-                showSwitch = true,
+            AutoSaveRow(
+                isEnabled = state.isAutoSaveEnabled,
+                onToggle = { onIntent(SettingsIntent.AutoSaveToggled) },
             )
             GroupDivider()
             DisabledRow(
@@ -348,9 +345,23 @@ private fun NotesViewRow(view: NotesView, onClick: () -> Unit, modifier: Modifie
     }
 }
 
+/** Fila con interruptor: toda la fila lo cambia y el lector de pantalla anuncia si está encendido. */
+@Composable
+private fun AutoSaveRow(isEnabled: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    SettingsRow(
+        iconRes = R.drawable.ic_save,
+        titleRes = R.string.settings_auto_save,
+        detailRes = R.string.settings_auto_save_detail,
+        modifier = modifier
+            .toggleable(value = isEnabled, role = Role.Switch, onValueChange = { onToggle() })
+            .testTag(SettingsTestTags.AUTO_SAVE_ROW),
+    ) {
+        SettingsSwitch(checked = isEnabled)
+    }
+}
+
 /**
- * Fila atenuada y sin acción. [valueRes] es lo que se muestra a la derecha o, con [showSwitch],
- * el estado que anuncia el lector de pantalla.
+ * Fila atenuada y sin acción. [valueRes] es lo que se muestra a la derecha.
  */
 @Composable
 private fun DisabledRow(
@@ -360,7 +371,6 @@ private fun DisabledRow(
     testTag: String,
     modifier: Modifier = Modifier,
     @StringRes valueRes: Int? = null,
-    showSwitch: Boolean = false,
 ) {
     val value = valueRes?.let { stringResource(it) }
     val description = listOfNotNull(stringResource(titleRes), stringResource(detailRes), value).joinToString()
@@ -376,18 +386,14 @@ private fun DisabledRow(
                 disabled()
             },
     ) {
-        if (showSwitch) {
-            SwitchOn()
-        } else {
-            if (value != null) {
-                Text(
-                    text = value,
-                    style = NotesTheme.typography.settingsValue,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Chevron()
+        if (value != null) {
+            Text(
+                text = value,
+                style = NotesTheme.typography.settingsValue,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+        Chevron()
     }
 }
 
@@ -447,22 +453,22 @@ private fun Chevron(modifier: Modifier = Modifier) {
     )
 }
 
-/** Interruptor del diseño, solo visual: la fila Guardado automático aún no se puede cambiar. */
+/** Interruptor del diseño (42 × 26 dp): el `Switch` de Material no admite ese tamaño. Solo dibuja; la fila lo cambia. */
 @Composable
-private fun SwitchOn(modifier: Modifier = Modifier) {
+private fun SettingsSwitch(checked: Boolean, modifier: Modifier = Modifier) {
     val sizes = NotesTheme.sizes
     val colors = MaterialTheme.colorScheme
     Box(
         modifier = modifier
             .size(width = sizes.settingsSwitchWidth, height = sizes.settingsSwitchHeight)
-            .background(colors.primary, CircleShape)
+            .background(if (checked) colors.primary else colors.outlineVariant, CircleShape)
             .padding(horizontal = (sizes.settingsSwitchHeight - sizes.settingsSwitchThumb) / 2),
-        contentAlignment = Alignment.CenterEnd,
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
         Box(
             modifier = Modifier
                 .size(sizes.settingsSwitchThumb)
-                .background(colors.onPrimary, CircleShape),
+                .background(if (checked) colors.onPrimary else colors.onSurfaceVariant, CircleShape),
         )
     }
 }

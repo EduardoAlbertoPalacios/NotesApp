@@ -51,6 +51,10 @@ internal class ImageStorageImpl @Inject constructor(
         }
     }
 
+    override suspend fun listPaths(): Set<String> = withContext(ioDispatcher) {
+        directory.listFiles().orEmpty().filter { it.isFile }.mapTo(mutableSetOf()) { it.absolutePath }
+    }
+
     private fun extensionOf(uri: Uri): String =
         context.contentResolver.getType(uri)
             ?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }

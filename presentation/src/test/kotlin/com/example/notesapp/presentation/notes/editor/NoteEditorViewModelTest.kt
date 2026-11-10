@@ -8,10 +8,13 @@ import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.common.time.TimeProvider
 import com.example.notesapp.domain.notes.AddNoteImagesUseCase
 import com.example.notesapp.domain.notes.ChecklistItem
+import com.example.notesapp.domain.notes.CleanUpImageFilesUseCase
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
+import com.example.notesapp.domain.notes.DiscardImageCopiesUseCase
 import com.example.notesapp.domain.notes.EditField
 import com.example.notesapp.domain.notes.FormatSpan
 import com.example.notesapp.domain.notes.GetNoteUseCase
+import com.example.notesapp.domain.notes.ImportNoteImagesUseCase
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
@@ -21,8 +24,10 @@ import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.domain.notes.RemoveNoteImageUseCase
 import com.example.notesapp.domain.notes.RestoreNoteUseCase
+import com.example.notesapp.domain.notes.SaveNoteChangesUseCase
 import com.example.notesapp.domain.notes.SaveNoteUseCase
 import com.example.notesapp.domain.notes.TextFormat
+import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.presentation.MainDispatcherRule
 import com.example.notesapp.presentation.R
@@ -30,6 +35,7 @@ import com.example.notesapp.presentation.notes.common.NoteDateFormatter
 import com.example.notesapp.presentation.settings.FakeSettingsRepository
 import java.util.Locale
 import java.util.TimeZone
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -40,7 +46,10 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -68,13 +77,23 @@ class NoteEditorViewModelTest {
         updatedAt = NOW - 1_000,
     )
 
+    /**
+     * Las pruebas sin modo explícito son del guardado automático: siguen comprobando lo mismo que antes de
+     * existir el ajuste (RF-9). Las del modo manual lo apagan antes de crear el ViewModel.
+     */
+    @Before
+    fun setUp() = runTest {
+        settingsRepository.emitStoredAutoSaveEnabled(true)
+    }
+
     /** Una nota nueva recibe ya su color predeterminado; así cada prueba empieza con la lectura resuelta. */
     private suspend fun createViewModel(
         noteId: Long? = null,
         category: String? = null,
         defaultColor: NoteColor? = NoteColor.DEFAULT,
+        savedStateHandle: SavedStateHandle = savedStateHandle(noteId, category),
     ): NoteEditorViewModel {
-        val viewModel = buildViewModel(noteId, category)
+        val viewModel = buildViewModel(noteId, category, savedStateHandle)
         if (noteId == null) {
             settingsRepository.emitStoredDefaultNoteColor(defaultColor)
             mainDispatcherRule.testDispatcher.scheduler.runCurrent()
@@ -83,13 +102,13 @@ class NoteEditorViewModelTest {
     }
 
     /** Sin emitir el color predeterminado: la lectura queda pendiente hasta que la prueba lo emita. */
-    private fun buildViewModel(noteId: Long? = null, category: String? = null) = NoteEditorViewModel(
-        savedStateHandle = SavedStateHandle(
-            buildMap {
-                noteId?.let { put(NoteEditorViewModel.NOTE_ID_ARG, it) }
-                category?.let { put(NoteEditorViewModel.CATEGORY_ARG, it) }
-            },
-        ),
+    private fun buildViewModel(
+        noteId: Long? = null,
+        category: String? = null,
+        savedStateHandle: SavedStateHandle = savedStateHandle(noteId, category),
+        settings: FakeSettingsRepository = settingsRepository,
+    ) = NoteEditorViewModel(
+        savedStateHandle = savedStateHandle,
         getNote = GetNoteUseCase(repository),
         saveNote = SaveNoteUseCase(repository, TimeProvider { NOW }),
         restoreNote = RestoreNoteUseCase(repository),
@@ -97,7 +116,19 @@ class NoteEditorViewModelTest {
         addNoteImages = AddNoteImagesUseCase(repository, imageStorage, TimeProvider { NOW }),
         removeNoteImage = RemoveNoteImageUseCase(repository, imageStorage),
         dateFormatter = dateFormatter,
-        getDefaultNoteColor = GetDefaultNoteColorUseCase(settingsRepository),
+        getDefaultNoteColor = GetDefaultNoteColorUseCase(settings),
+        getAutoSaveEnabled = GetAutoSaveEnabledUseCase(settings),
+        importNoteImages = ImportNoteImagesUseCase(imageStorage),
+        saveNoteChanges = SaveNoteChangesUseCase(repository, imageStorage, TimeProvider { NOW }),
+        discardImageCopies = DiscardImageCopiesUseCase(imageStorage),
+        cleanUpImageFiles = CleanUpImageFilesUseCase(repository, imageStorage),
+    )
+
+    private fun savedStateHandle(noteId: Long? = null, category: String? = null) = SavedStateHandle(
+        buildMap {
+            noteId?.let { put(NoteEditorViewModel.NOTE_ID_ARG, it) }
+            category?.let { put(NoteEditorViewModel.CATEGORY_ARG, it) }
+        },
     )
 
     @Test
@@ -2097,6 +2128,1358 @@ class NoteEditorViewModelTest {
         assertTrue(settingsRepository.savedDefaultNoteColors.isEmpty())
     }
 
+    // --- Guardado automático apagado (spec 009) ---
+
+    /** Abre el editor con el guardado automático apagado y espera a que termine de cargar. */
+    private suspend fun createManualViewModel(
+        noteId: Long? = null,
+        category: String? = null,
+        savedStateHandle: SavedStateHandle = savedStateHandle(noteId, category),
+    ): NoteEditorViewModel {
+        settingsRepository.emitStoredAutoSaveEnabled(false)
+        val viewModel = createViewModel(noteId, category, savedStateHandle = savedStateHandle)
+        mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
+        return viewModel
+    }
+
+    /** Guarda [note] en el repositorio y la abre en modo manual. */
+    private suspend fun openManually(
+        note: Note = existing,
+        savedStateHandle: SavedStateHandle = savedStateHandle(note.id),
+    ): NoteEditorViewModel {
+        repository.notes[note.id] = note
+        return createManualViewModel(note.id, savedStateHandle = savedStateHandle)
+    }
+
+    /** La nota sigue como estaba guardada, nada se escribió en la base y el editor muestra cambios pendientes. */
+    private fun NoteEditorViewModel.assertPendingAndNothingStored(stored: Note) {
+        assertEquals(stored, repository.notes[stored.id])
+        assertEquals(0, repository.saveCount)
+        assertTrue(state.value.hasUnsavedChanges)
+        assertEquals(SaveStatus.Unsaved, state.value.saveStatus)
+    }
+
+    private fun NoteEditorViewModel.assertNoPendingChanges() {
+        assertFalse(state.value.hasUnsavedChanges)
+        assertTrue(state.value.saveStatus != SaveStatus.Unsaved)
+    }
+
+    private fun NoteEditorViewModel.applyColor(color: NoteColor) {
+        onIntent(NoteEditorIntent.ColorButtonClicked)
+        onIntent(NoteEditorIntent.PickerColorSelected(color))
+        onIntent(NoteEditorIntent.ColorApplied)
+    }
+
+    @Test
+    fun `given auto save off when existing note opened then editor is manual without pending changes`() = runTest {
+        val viewModel = openManually()
+
+        val state = viewModel.state.value
+        assertTrue(state.isManualSave)
+        assertFalse(state.isLoading)
+        assertFalse(state.hasUnsavedChanges)
+        assertEquals(SaveStatus.Idle, state.saveStatus)
+        assertEquals(existing.title, state.title.text)
+    }
+
+    @Test
+    fun `given auto save off when new note opened then editor is manual without pending changes`() = runTest {
+        val viewModel = createManualViewModel()
+
+        assertEquals(NoteEditorUiState(isManualSave = true), viewModel.state.value)
+    }
+
+    @Test
+    fun `given auto save on when note opened then editor is not manual`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isManualSave)
+    }
+
+    @Test
+    fun `given auto save setting not read yet when existing note opened then stays loading until it arrives`() = runTest {
+        repository.notes[existing.id] = existing
+        val settings = FakeSettingsRepository()
+        val viewModel = buildViewModel(existing.id, settings = settings)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.isLoading)
+
+        settings.emitStoredAutoSaveEnabled(false)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isLoading)
+        assertTrue(viewModel.state.value.isManualSave)
+        assertEquals(existing.title, viewModel.state.value.title.text)
+    }
+
+    @Test
+    fun `given auto save setting not read yet when new note opened then stays loading until it arrives`() = runTest {
+        val settings = FakeSettingsRepository()
+        settings.emitStoredDefaultNoteColor(NoteColor.MINT)
+        val viewModel = buildViewModel(settings = settings)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.isLoading)
+
+        settings.emitStoredAutoSaveEnabled(false)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isLoading)
+        assertTrue(viewModel.state.value.isManualSave)
+        assertEquals(NoteColor.MINT, viewModel.state.value.color)
+    }
+
+    @Test
+    fun `given no stored auto save setting when note opened then editor saves automatically`() = runTest {
+        repository.notes[existing.id] = existing
+        settingsRepository.emitStoredAutoSaveEnabled(null)
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isManualSave)
+        assertTrue(repository.notes.getValue(existing.id).isPinned)
+    }
+
+    @Test
+    fun `given manual editor open when setting turned on then it stays manual and next editor saves automatically`() =
+        runTest {
+            val manual = openManually()
+
+            settingsRepository.emitStoredAutoSaveEnabled(true)
+            advanceUntilIdle()
+            manual.onIntent(NoteEditorIntent.PinClicked)
+            advanceUntilIdle()
+
+            assertTrue(manual.state.value.isManualSave)
+            manual.assertPendingAndNothingStored(existing)
+
+            val automatic = createViewModel(existing.id)
+            advanceUntilIdle()
+            automatic.onIntent(NoteEditorIntent.PinClicked)
+            advanceUntilIdle()
+
+            assertFalse(automatic.state.value.isManualSave)
+            assertTrue(repository.notes.getValue(existing.id).isPinned)
+        }
+
+    @Test
+    fun `given automatic editor open when setting turned off then it keeps saving automatically`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        settingsRepository.emitStoredAutoSaveEnabled(false)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isManualSave)
+        assertTrue(repository.notes.getValue(existing.id).isPinned)
+    }
+
+    @Test
+    fun `given auto save on when edited and back clicked then never shows unsaved status nor leave dialog`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.typeInTitle("!")
+            assertFalse(viewModel.state.value.hasUnsavedChanges)
+            assertTrue(viewModel.state.value.saveStatus != SaveStatus.Unsaved)
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+        assertFalse(viewModel.state.value.isLeaveDialogVisible)
+        assertEquals(existing.title + "!", repository.notes.getValue(existing.id).title)
+    }
+
+    @Test
+    fun `given manual mode when title typed then nothing is saved and changes are pending`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.typeInTitle("!")
+        advanceUntilIdle()
+
+        viewModel.assertPendingAndNothingStored(existing)
+        assertEquals(existing.title + "!", viewModel.state.value.title.text)
+        assertEquals(dateFormatter.format(existing.updatedAt), viewModel.state.value.date)
+    }
+
+    @Test
+    fun `given manual mode when content typed then nothing is saved and changes are pending`() = runTest {
+        val viewModel = openManually()
+        viewModel.moveContentCursorToEnd()
+
+        viewModel.typeInContent(" Sí")
+        advanceUntilIdle()
+
+        viewModel.assertPendingAndNothingStored(existing)
+    }
+
+    @Test
+    fun `given manual mode when format applied to selection then nothing is saved and changes are pending`() = runTest {
+        val viewModel = openManually()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(0, 5))))
+
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+        advanceUntilIdle()
+
+        assertEquals(listOf(FormatSpan(0, 5, TextFormat.BOLD)), viewModel.state.value.contentSpans)
+        viewModel.assertPendingAndNothingStored(existing)
+    }
+
+    @Test
+    fun `given manual mode when checklist clicked then nothing is saved and changes are pending`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+        advanceUntilIdle()
+
+        assertEquals(listOf(task(0)), viewModel.state.value.contentTasks)
+        viewModel.assertPendingAndNothingStored(existing)
+    }
+
+    @Test
+    fun `given manual mode when task toggled then nothing is saved and changes are pending`() = runTest {
+        val withTask = existing.copy(contentTasks = listOf(task(0)))
+        val viewModel = openManually(withTask)
+
+        viewModel.onIntent(NoteEditorIntent.TaskToggled(0))
+        advanceUntilIdle()
+
+        assertEquals(listOf(task(0, isDone = true)), viewModel.state.value.contentTasks)
+        viewModel.assertPendingAndNothingStored(withTask)
+    }
+
+    @Test
+    fun `given manual mode when pin clicked then nothing is saved and changes are pending`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.isPinned)
+        viewModel.assertPendingAndNothingStored(existing)
+    }
+
+    @Test
+    fun `given manual mode when category clicked then nothing is saved and changes are pending`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.WORK))
+        advanceUntilIdle()
+
+        assertEquals(NoteCategory.WORK, viewModel.state.value.category)
+        viewModel.assertPendingAndNothingStored(existing)
+    }
+
+    @Test
+    fun `given manual mode when other color applied then nothing is saved and changes are pending`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.applyColor(NoteColor.LAVENDER)
+        advanceUntilIdle()
+
+        assertEquals(NoteColor.LAVENDER, viewModel.state.value.color)
+        assertEquals(null, viewModel.state.value.pickerColor)
+        viewModel.assertPendingAndNothingStored(existing)
+    }
+
+    @Test
+    fun `given manual mode when images picked then copies them without associating and changes are pending`() = runTest {
+        val withImage = existing.copy(images = listOf(imageA))
+        val viewModel = openManually(withImage)
+
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(URI_A), imageStorage.savedUris)
+        assertEquals(listOf(imageA.path, copyOf(URI_A)), viewModel.state.value.images.map { it.path })
+        assertTrue(imageStorage.deletedPaths.isEmpty())
+        viewModel.assertPendingAndNothingStored(withImage)
+    }
+
+    @Test
+    fun `given manual mode when saved image removed then hides it without deleting its file`() = runTest {
+        val withImages = existing.copy(images = listOf(imageA, imageB))
+        val viewModel = openManually(withImages)
+
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        advanceUntilIdle()
+
+        assertEquals(listOf(imageB), viewModel.state.value.images)
+        assertTrue(imageStorage.deletedPaths.isEmpty())
+        viewModel.assertPendingAndNothingStored(withImages)
+    }
+
+    @Test
+    fun `given manual mode when pending image removed then deletes its copy and has no pending changes`() = runTest {
+        val viewModel = openManually()
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(viewModel.state.value.images.single()))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.images.isEmpty())
+        assertEquals(listOf(copyOf(URI_A)), imageStorage.deletedPaths)
+        viewModel.assertNoPendingChanges()
+        assertEquals(existing, repository.notes[existing.id])
+    }
+
+    @Test
+    fun `given some images cannot be copied in manual mode when picked then keeps the rest pending and shows image error`() =
+        runTest {
+            val viewModel = openManually()
+            imageStorage.unavailableUris += URI_B
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A, URI_B)))
+                assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_image_error), awaitItem())
+            }
+            assertEquals(listOf(copyOf(URI_A)), viewModel.state.value.images.map { it.path })
+            viewModel.assertPendingAndNothingStored(existing)
+        }
+
+    @Test
+    fun `given no image can be copied in manual mode when picked then shows image error without pending changes`() =
+        runTest {
+            val viewModel = openManually()
+            imageStorage.unavailableUris += URI_A
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+                assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_image_error), awaitItem())
+            }
+            assertTrue(viewModel.state.value.images.isEmpty())
+            viewModel.assertNoPendingChanges()
+        }
+
+    @Test
+    fun `given pin clicked twice in manual mode when back to saved state then has no pending changes`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        assertTrue(viewModel.state.value.hasUnsavedChanges)
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        advanceUntilIdle()
+
+        viewModel.assertNoPendingChanges()
+        assertEquals(SaveStatus.Idle, viewModel.state.value.saveStatus)
+    }
+
+    @Test
+    fun `given typing undone in manual mode when back to saved state then has no pending changes`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        advanceUntilIdle()
+
+        assertEquals(existing.title, viewModel.state.value.title.text)
+        viewModel.assertNoPendingChanges()
+        assertEquals(0, repository.saveCount)
+    }
+
+    @Test
+    fun `given category chosen and removed in manual mode when back to saved state then has no pending changes`() =
+        runTest {
+            val viewModel = openManually()
+
+            viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.WORK))
+            viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.WORK))
+            advanceUntilIdle()
+
+            viewModel.assertNoPendingChanges()
+        }
+
+    @Test
+    fun `given color changed and restored in manual mode when back to saved state then has no pending changes`() =
+        runTest {
+            val viewModel = openManually()
+
+            viewModel.applyColor(NoteColor.LAVENDER)
+            viewModel.applyColor(existing.color)
+            advanceUntilIdle()
+
+            viewModel.assertNoPendingChanges()
+        }
+
+    @Test
+    fun `given text typed and deleted by hand in manual mode when back to saved state then has no pending changes`() =
+        runTest {
+            val viewModel = openManually()
+            viewModel.typeInTitle("!")
+
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue(existing.title, TextRange(existing.title.length))))
+            advanceUntilIdle()
+
+            viewModel.assertNoPendingChanges()
+        }
+
+    @Test
+    fun `given blank new note with color applied in manual mode when back clicked then leaves without dialog nor saving`() =
+        runTest {
+            val viewModel = createManualViewModel()
+            viewModel.applyColor(NoteColor.LAVENDER)
+            assertFalse(viewModel.state.value.hasUnsavedChanges)
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            }
+            assertFalse(viewModel.state.value.isLeaveDialogVisible)
+            assertTrue(repository.notes.isEmpty())
+        }
+
+    @Test
+    fun `given new note with blank title in manual mode when edited then has no pending changes`() = runTest {
+        val viewModel = createManualViewModel(category = NoteCategory.WORK.name)
+
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("   ")))
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        advanceUntilIdle()
+
+        viewModel.assertNoPendingChanges()
+        assertEquals(SaveStatus.Idle, viewModel.state.value.saveStatus)
+    }
+
+    @Test
+    fun `given new note with only images in manual mode when back clicked then shows leave dialog`() = runTest {
+        val viewModel = createManualViewModel()
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.hasUnsavedChanges)
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+        assertTrue(viewModel.state.value.isLeaveDialogVisible)
+        assertTrue(repository.notes.isEmpty())
+    }
+
+    @Test
+    fun `given pending changes in manual mode when save clicked then stores them all with a new date`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        val viewModel = openManually(old)
+        viewModel.typeInTitle("!")
+        viewModel.moveContentCursorToEnd()
+        viewModel.typeInContent(" Sí")
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.PERSONAL))
+        viewModel.applyColor(NoteColor.MINT)
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        val expected = old.copy(
+            title = old.title + "!",
+            content = old.content + " Sí",
+            isPinned = true,
+            category = NoteCategory.PERSONAL,
+            color = NoteColor.MINT,
+            updatedAt = NOW,
+        )
+        assertEquals(expected, repository.notes[old.id])
+        assertEquals(1, repository.saveCount)
+        val state = viewModel.state.value
+        assertEquals(dateFormatter.format(NOW), state.date)
+        assertEquals(SaveStatus.Saved, state.saveStatus)
+        assertFalse(state.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `given format and tasks pending in manual mode when save clicked then stores spans and tasks`() = runTest {
+        val viewModel = openManually()
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(0, 5))))
+        viewModel.onIntent(NoteEditorIntent.FormatSelected(TextFormat.UNDERLINE))
+        viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.TaskToggled(0))
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        val stored = repository.notes.getValue(existing.id)
+        assertEquals(listOf(FormatSpan(0, 5, TextFormat.UNDERLINE)), stored.contentSpans)
+        assertEquals(listOf(task(0, isDone = true)), stored.contentTasks)
+    }
+
+    @Test
+    fun `given saved changes in manual mode when save clicked again then button is disabled and nothing is saved`() =
+        runTest {
+            val viewModel = openManually()
+            viewModel.typeInTitle("!")
+            viewModel.onIntent(NoteEditorIntent.SaveClicked)
+            advanceUntilIdle()
+
+            viewModel.onIntent(NoteEditorIntent.SaveClicked)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.hasUnsavedChanges)
+            assertEquals(1, repository.saveCount)
+        }
+
+    @Test
+    fun `given no changes in manual mode when save clicked then nothing is saved`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.SaveClicked)
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+        assertEquals(0, repository.saveCount)
+        assertEquals(SaveStatus.Idle, viewModel.state.value.saveStatus)
+    }
+
+    @Test
+    fun `given new note in manual mode when saved twice with edits then updates the same note`() = runTest {
+        val viewModel = createManualViewModel(category = NoteCategory.WORK.name)
+        viewModel.typeInTitle("Compra")
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        viewModel.typeInContent("Pan")
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        val stored = repository.notes.values.single()
+        assertEquals("Compra", stored.title)
+        assertEquals("Pan", stored.content)
+        assertEquals(NoteCategory.WORK, stored.category)
+        assertEquals(NoteColor.DEFAULT, stored.color)
+        assertEquals(NOW, stored.updatedAt)
+    }
+
+    @Test
+    fun `given pending and removed images in manual mode when save clicked then associates and deletes them`() = runTest {
+        val viewModel = openManually(existing.copy(images = listOf(imageA, imageB)))
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        val stored = repository.notes.getValue(existing.id)
+        assertEquals(listOf(imageB.path, copyOf(URI_A)), stored.images.map { it.path })
+        assertEquals(NOW, stored.updatedAt)
+        assertEquals(listOf(imageA.path), imageStorage.deletedPaths)
+        assertEquals(stored.images, viewModel.state.value.images)
+        viewModel.assertNoPendingChanges()
+    }
+
+    @Test
+    fun `given saved changes in manual mode when saved then keeps undo history`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.canUndo)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        advanceUntilIdle()
+
+        assertEquals(existing.title, viewModel.state.value.title.text)
+        assertTrue(viewModel.state.value.hasUnsavedChanges)
+        assertEquals(SaveStatus.Unsaved, viewModel.state.value.saveStatus)
+    }
+
+    @Test
+    fun `given saved in manual mode when pin toggled twice then status shows saved`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        advanceUntilIdle()
+
+        viewModel.assertNoPendingChanges()
+        assertEquals(SaveStatus.Saved, viewModel.state.value.saveStatus)
+    }
+
+    @Test
+    fun `given save then undo back to opened note in manual mode when saved then restores its original date`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        val viewModel = openManually(old)
+        viewModel.moveContentCursorToEnd()
+        viewModel.typeInContent("!")
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+        assertEquals(NOW, repository.notes.getValue(old.id).updatedAt)
+
+        viewModel.onIntent(NoteEditorIntent.UndoClicked)
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertEquals(old, repository.notes[old.id])
+        assertEquals(dateFormatter.format(old.updatedAt), viewModel.state.value.date)
+        viewModel.assertNoPendingChanges()
+    }
+
+    @Test
+    fun `given save then text restored by hand to opened note in manual mode when saved then uses a new date`() = runTest {
+        val old = existing.copy(updatedAt = NOW - TEN_DAYS_MS)
+        val viewModel = openManually(old)
+        viewModel.moveContentCursorToEnd()
+        viewModel.typeInContent("!")
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(old.content, TextRange(old.content.length))))
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertEquals(old.copy(updatedAt = NOW), repository.notes[old.id])
+    }
+
+    @Test
+    fun `given save failure in manual mode when save clicked then shows error and keeps changes pending`() = runTest {
+        val viewModel = openManually(existing.copy(images = listOf(imageA)))
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+        repository.failure = NoteError.Storage
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.SaveClicked)
+            assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_save_error), awaitItem())
+            expectNoEvents()
+        }
+        val state = viewModel.state.value
+        assertTrue(state.hasUnsavedChanges)
+        assertEquals(SaveStatus.Unsaved, state.saveStatus)
+        assertEquals(existing.title + "!", state.title.text)
+        assertEquals(listOf(copyOf(URI_A)), state.images.map { it.path })
+        assertEquals(existing.copy(images = listOf(imageA)), repository.notes[existing.id])
+        assertTrue(imageStorage.deletedPaths.isEmpty())
+    }
+
+    @Test
+    fun `given failed save in manual mode when save clicked again then stores the pending changes`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        repository.failure = NoteError.Storage
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+        repository.failure = null
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertEquals(existing.title + "!", repository.notes.getValue(existing.id).title)
+        assertEquals(SaveStatus.Saved, viewModel.state.value.saveStatus)
+        viewModel.assertNoPendingChanges()
+    }
+
+    @Test
+    fun `given existing note emptied in manual mode when save clicked then neither saves nor warns`() = runTest {
+        val viewModel = openManually()
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("")))
+        viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("")))
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.SaveClicked)
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+        assertEquals(existing, repository.notes[existing.id])
+        assertEquals(SaveStatus.Unsaved, viewModel.state.value.saveStatus)
+    }
+
+    @Test
+    fun `given existing note emptied in manual mode when saved from leave dialog then leaves keeping last version`() =
+        runTest {
+            val viewModel = openManually()
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("")))
+            viewModel.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue("")))
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            runCurrent()
+            assertTrue(viewModel.state.value.isLeaveDialogVisible)
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                expectNoEvents()
+            }
+            assertEquals(existing, repository.notes[existing.id])
+        }
+
+    @Test
+    fun `given pending changes in manual mode when back clicked then shows leave dialog without navigating`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+        assertTrue(viewModel.state.value.isLeaveDialogVisible)
+        viewModel.assertPendingAndNothingStored(existing)
+    }
+
+    @Test
+    fun `given no pending changes in manual mode when back clicked then navigates back without dialog`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+        assertFalse(viewModel.state.value.isLeaveDialogVisible)
+        assertEquals(0, repository.saveCount)
+    }
+
+    @Test
+    fun `given leave dialog when save chosen then stores changes closes dialog and navigates back`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+        assertFalse(viewModel.state.value.isLeaveDialogVisible)
+        assertEquals(existing.copy(title = existing.title + "!", updatedAt = NOW), repository.notes[existing.id])
+    }
+
+    @Test
+    fun `given leave dialog and save failure when save chosen then shows error and stays with pending changes`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+        repository.failure = NoteError.Storage
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+            assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_save_error), awaitItem())
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+        assertFalse(viewModel.state.value.isLeaveDialogVisible)
+        assertTrue(viewModel.state.value.hasUnsavedChanges)
+        assertEquals(existing.title + "!", viewModel.state.value.title.text)
+        assertEquals(existing, repository.notes[existing.id])
+    }
+
+    @Test
+    fun `given failed save from leave dialog when back clicked again then dialog shows again`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+        repository.failure = NoteError.Storage
+        viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        assertTrue(viewModel.state.value.isLeaveDialogVisible)
+    }
+
+    @Test
+    fun `given leave dialog when discard chosen then navigates back leaving the note as last saved`() = runTest {
+        val withImages = existing.copy(images = listOf(imageA, imageB))
+        val viewModel = openManually(withImages)
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A, URI_B)))
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveDiscardClicked)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+        assertFalse(viewModel.state.value.isLeaveDialogVisible)
+        assertEquals(withImages, repository.notes[existing.id])
+        assertEquals(0, repository.saveCount)
+        assertEquals(setOf(copyOf(URI_A), copyOf(URI_B)), imageStorage.deletedPaths.toSet())
+        assertFalse(imageA.path in imageStorage.deletedPaths)
+    }
+
+    @Test
+    fun `given new note with text when discard chosen then the note is not created`() = runTest {
+        val viewModel = createManualViewModel()
+        viewModel.typeInTitle("Compra")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveDiscardClicked)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+        assertTrue(repository.notes.isEmpty())
+    }
+
+    @Test
+    fun `given leave dialog when dismissed then closes it and stays with pending changes`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveDialogDismissed)
+            advanceUntilIdle()
+            expectNoEvents()
+        }
+        assertFalse(viewModel.state.value.isLeaveDialogVisible)
+        assertEquals(existing.title + "!", viewModel.state.value.title.text)
+        viewModel.assertPendingAndNothingStored(existing)
+    }
+
+    @Test
+    fun `given pending changes in manual mode when delete confirmed then deletes note and discards copies without dialog`() =
+        runTest {
+            val viewModel = openManually(existing.copy(images = listOf(imageA)))
+            viewModel.typeInTitle("!")
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            advanceUntilIdle()
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+                viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            }
+            assertFalse(viewModel.state.value.isLeaveDialogVisible)
+            assertFalse(viewModel.state.value.isDeleteDialogVisible)
+            assertTrue(repository.notes.isEmpty())
+            assertEquals(0, repository.saveCount)
+            assertTrue(copyOf(URI_A) in imageStorage.deletedPaths)
+            assertTrue(imageA.path in imageStorage.deletedPaths)
+        }
+
+    @Test
+    fun `given new note with pending images in manual mode when delete confirmed then discards copies and stores nothing`() =
+        runTest {
+            val viewModel = createManualViewModel()
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            advanceUntilIdle()
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            }
+            assertTrue(repository.notes.isEmpty())
+            assertEquals(listOf(copyOf(URI_A)), imageStorage.deletedPaths)
+        }
+
+    @Test
+    fun `given orphan image file when leaving without changes in manual mode then deletes it before navigating back`() =
+        runTest {
+            val viewModel = openManually()
+            imageStorage.save(URI_C)
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                assertEquals(listOf(copyOf(URI_C)), imageStorage.deletedPaths)
+            }
+        }
+
+    @Test
+    fun `given orphan image file when leaving with discard then deletes it before navigating back`() = runTest {
+        val viewModel = openManually()
+        imageStorage.save(URI_C)
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveDiscardClicked)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            assertEquals(listOf(copyOf(URI_C)), imageStorage.deletedPaths)
+        }
+    }
+
+    @Test
+    fun `given orphan image file when leaving after saving from dialog then deletes it but keeps saved images`() = runTest {
+        val viewModel = openManually()
+        imageStorage.save(URI_C)
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            assertEquals(listOf(copyOf(URI_C)), imageStorage.deletedPaths)
+        }
+        assertEquals(listOf(copyOf(URI_A)), repository.notes.getValue(existing.id).images.map { it.path })
+    }
+
+    @Test
+    fun `given orphan image file when note deleted in manual mode then deletes it before navigating back`() = runTest {
+        val viewModel = openManually()
+        imageStorage.save(URI_C)
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            assertEquals(listOf(copyOf(URI_C)), imageStorage.deletedPaths)
+        }
+    }
+
+    @Test
+    fun `given orphan image file when leaving in automatic mode then deletes it before navigating back`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        imageStorage.save(URI_C)
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            assertEquals(listOf(copyOf(URI_C)), imageStorage.deletedPaths)
+        }
+    }
+
+    @Test
+    fun `given pending changes in manual mode when edited then keeps a draft in saved state`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        val viewModel = openManually(existing.copy(images = listOf(imageA, imageB)), handle)
+
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        viewModel.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.WORK))
+        viewModel.applyColor(NoteColor.MINT)
+        viewModel.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+
+        assertEquals(
+            EditorDraft(
+                title = existing.title + "!",
+                content = existing.content,
+                contentSpans = emptyList(),
+                contentTasks = listOf(task(0)),
+                isPinned = true,
+                category = NoteCategory.WORK,
+                color = NoteColor.MINT,
+                pendingImagePaths = listOf(copyOf(URI_A)),
+                removedImageIds = listOf(imageA.id),
+            ),
+            EditorDraftCodec.read(handle),
+        )
+    }
+
+    @Test
+    fun `given draft in saved state when editor recreated then shows recovered changes still pending`() = runTest {
+        val withImages = existing.copy(images = listOf(imageA, imageB))
+        val handle = savedStateHandle(existing.id)
+        val first = openManually(withImages, handle)
+        first.typeInTitle("!")
+        first.onIntent(NoteEditorIntent.PinClicked)
+        first.onIntent(NoteEditorIntent.CategoryClicked(NoteCategory.WORK))
+        first.applyColor(NoteColor.MINT)
+        first.onIntent(NoteEditorIntent.ContentChanged(TextFieldValue(existing.content, TextRange(0, 5))))
+        first.onIntent(NoteEditorIntent.FormatSelected(TextFormat.BOLD))
+        first.onIntent(NoteEditorIntent.ChecklistButtonClicked)
+        first.onIntent(NoteEditorIntent.TaskToggled(0))
+        first.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        first.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+
+        val recreated = createManualViewModel(existing.id, savedStateHandle = handle)
+
+        val state = recreated.state.value
+        assertEquals(existing.title + "!", state.title.text)
+        assertEquals(existing.content, state.content.text)
+        assertEquals(listOf(FormatSpan(0, 5, TextFormat.BOLD)), state.contentSpans)
+        assertEquals(listOf(task(0, isDone = true)), state.contentTasks)
+        assertTrue(state.isPinned)
+        assertEquals(NoteCategory.WORK, state.category)
+        assertEquals(NoteColor.MINT, state.color)
+        assertEquals(listOf(imageB.path, copyOf(URI_A)), state.images.map { it.path })
+        assertTrue(state.hasUnsavedChanges)
+        assertEquals(SaveStatus.Unsaved, state.saveStatus)
+        assertFalse(state.canUndo)
+        assertEquals(withImages, repository.notes[existing.id])
+        assertEquals(0, repository.saveCount)
+    }
+
+    @Test
+    fun `given recovered draft when save clicked then stores recovered changes and images`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        val first = openManually(existing.copy(images = listOf(imageA, imageB)), handle)
+        first.typeInTitle("!")
+        first.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        first.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+        val recreated = createManualViewModel(existing.id, savedStateHandle = handle)
+
+        recreated.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        val stored = repository.notes.getValue(existing.id)
+        assertEquals(existing.title + "!", stored.title)
+        assertEquals(listOf(imageB.path, copyOf(URI_A)), stored.images.map { it.path })
+        assertEquals(listOf(imageA.path), imageStorage.deletedPaths)
+        recreated.assertNoPendingChanges()
+        assertNull(EditorDraftCodec.read(handle))
+    }
+
+    @Test
+    fun `given recovered draft when leaving then asks to save the recovered changes`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        openManually(savedStateHandle = handle).typeInTitle("!")
+        val recreated = createManualViewModel(existing.id, savedStateHandle = handle)
+
+        recreated.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        assertTrue(recreated.state.value.isLeaveDialogVisible)
+    }
+
+    @Test
+    fun `given recovered pending image when removed then deletes its copy`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        val first = openManually(savedStateHandle = handle)
+        first.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+        val recreated = createManualViewModel(existing.id, savedStateHandle = handle)
+
+        recreated.onIntent(NoteEditorIntent.RemoveImageClicked(recreated.state.value.images.single()))
+        advanceUntilIdle()
+
+        assertEquals(listOf(copyOf(URI_A)), imageStorage.deletedPaths)
+        recreated.assertNoPendingChanges()
+    }
+
+    @Test
+    fun `given draft of a new note when editor recreated then recovers it without creating the note`() = runTest {
+        val handle = savedStateHandle(category = NoteCategory.PERSONAL.name)
+        val first = createManualViewModel(category = NoteCategory.PERSONAL.name, savedStateHandle = handle)
+        first.typeInTitle("Compra")
+        first.typeInContent("Pan")
+
+        val recreated = createManualViewModel(category = NoteCategory.PERSONAL.name, savedStateHandle = handle)
+
+        val state = recreated.state.value
+        assertEquals("Compra", state.title.text)
+        assertEquals("Pan", state.content.text)
+        assertEquals(NoteCategory.PERSONAL, state.category)
+        assertTrue(state.hasUnsavedChanges)
+        assertTrue(repository.notes.isEmpty())
+    }
+
+    @Test
+    fun `given no draft in saved state when editor recreated then shows the note as saved`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        openManually(savedStateHandle = handle)
+        val fresh = createManualViewModel(existing.id).state.value
+
+        val recreated = createManualViewModel(existing.id, savedStateHandle = handle)
+
+        assertEquals(fresh, recreated.state.value)
+        assertNull(EditorDraftCodec.read(handle))
+    }
+
+    @Test
+    fun `given changes back to saved state when checked then draft is removed`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        val viewModel = openManually(savedStateHandle = handle)
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        assertNotNull(EditorDraftCodec.read(handle))
+
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+
+        assertNull(EditorDraftCodec.read(handle))
+    }
+
+    @Test
+    fun `given pending changes when saved then draft is removed`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        val viewModel = openManually(savedStateHandle = handle)
+        viewModel.typeInTitle("!")
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertNull(EditorDraftCodec.read(handle))
+    }
+
+    @Test
+    fun `given pending changes when save fails then draft is kept`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        val viewModel = openManually(savedStateHandle = handle)
+        viewModel.typeInTitle("!")
+        repository.failure = NoteError.Storage
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertEquals(existing.title + "!", EditorDraftCodec.read(handle)?.title)
+    }
+
+    @Test
+    fun `given pending changes when discarded then draft is removed`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        val viewModel = openManually(savedStateHandle = handle)
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.onIntent(NoteEditorIntent.LeaveDiscardClicked)
+        advanceUntilIdle()
+
+        assertNull(EditorDraftCodec.read(handle))
+    }
+
+    @Test
+    fun `given automatic mode when edited then no draft is kept`() = runTest {
+        repository.notes[existing.id] = existing
+        val handle = savedStateHandle(existing.id)
+        val viewModel = createViewModel(existing.id, savedStateHandle = handle)
+        advanceUntilIdle()
+
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.PinClicked)
+        advanceUntilIdle()
+
+        assertNull(EditorDraftCodec.read(handle))
+    }
+
+    @Test
+    fun `given draft in saved state when setting turned on before recreation then ignores the draft`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        openManually(savedStateHandle = handle).typeInTitle("!")
+        settingsRepository.emitStoredAutoSaveEnabled(true)
+
+        val recreated = createViewModel(existing.id, savedStateHandle = handle)
+        advanceUntilIdle()
+
+        assertFalse(recreated.state.value.isManualSave)
+        assertEquals(existing.title, recreated.state.value.title.text)
+        assertFalse(recreated.state.value.hasUnsavedChanges)
+    }
+
+    @Test
+    fun `given image added while manual save is in progress when save ends then it stays pending and visible`() =
+        runTest {
+            val handle = savedStateHandle(existing.id)
+            val viewModel = openManually(existing.copy(images = listOf(imageA)), handle)
+            viewModel.typeInTitle("!")
+            val gate = CompletableDeferred<Unit>()
+            repository.saveChangesGate = gate
+            viewModel.onIntent(NoteEditorIntent.SaveClicked)
+            runCurrent()
+
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            runCurrent()
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            val stored = repository.notes.getValue(existing.id)
+            assertEquals(existing.title + "!", stored.title)
+            assertEquals(listOf(imageA), stored.images)
+            val state = viewModel.state.value
+            assertEquals(listOf(imageA.path, copyOf(URI_A)), state.images.map { it.path })
+            assertTrue(state.hasUnsavedChanges)
+            assertEquals(SaveStatus.Unsaved, state.saveStatus)
+            assertEquals(listOf(copyOf(URI_A)), EditorDraftCodec.read(handle)?.pendingImagePaths)
+            assertTrue(imageStorage.deletedPaths.isEmpty())
+        }
+
+    @Test
+    fun `given saved image removed while manual save is in progress when save ends then removal stays pending`() =
+        runTest {
+            val handle = savedStateHandle(existing.id)
+            val viewModel = openManually(existing.copy(images = listOf(imageA, imageB)), handle)
+            viewModel.typeInTitle("!")
+            val gate = CompletableDeferred<Unit>()
+            repository.saveChangesGate = gate
+            viewModel.onIntent(NoteEditorIntent.SaveClicked)
+            runCurrent()
+
+            viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageB))
+            runCurrent()
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(imageA, imageB), repository.notes.getValue(existing.id).images)
+            val state = viewModel.state.value
+            assertEquals(listOf(imageA), state.images)
+            assertTrue(state.hasUnsavedChanges)
+            assertEquals(SaveStatus.Unsaved, state.saveStatus)
+            assertEquals(listOf(imageB.id), EditorDraftCodec.read(handle)?.removedImageIds)
+            assertTrue(imageStorage.deletedPaths.isEmpty())
+        }
+
+    @Test
+    fun `given image changes made while manual save is in progress when saved again then stores them`() = runTest {
+        val viewModel = openManually(existing.copy(images = listOf(imageA, imageB)))
+        viewModel.typeInTitle("!")
+        val gate = CompletableDeferred<Unit>()
+        repository.saveChangesGate = gate
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        runCurrent()
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageB))
+        runCurrent()
+        gate.complete(Unit)
+        advanceUntilIdle()
+        repository.saveChangesGate = null
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        val stored = repository.notes.getValue(existing.id)
+        assertEquals(listOf(imageA.path, copyOf(URI_A)), stored.images.map { it.path })
+        assertEquals(listOf(imageB.path), imageStorage.deletedPaths)
+        assertEquals(stored.images, viewModel.state.value.images)
+        viewModel.assertNoPendingChanges()
+    }
+
+    @Test
+    fun `given delete failure in manual mode when delete confirmed then keeps copies images pending changes and draft`() =
+        runTest {
+            val handle = savedStateHandle(existing.id)
+            val withImages = existing.copy(images = listOf(imageA, imageB))
+            val viewModel = openManually(withImages, handle)
+            viewModel.typeInTitle("!")
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageB))
+            advanceUntilIdle()
+            val draft = EditorDraftCodec.read(handle)
+            repository.failure = NoteError.Storage
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+                viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+                assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error), awaitItem())
+                expectNoEvents()
+            }
+
+            assertTrue(imageStorage.deletedPaths.isEmpty())
+            val state = viewModel.state.value
+            assertEquals(listOf(imageA.path, copyOf(URI_A)), state.images.map { it.path })
+            assertTrue(state.hasUnsavedChanges)
+            assertEquals(SaveStatus.Unsaved, state.saveStatus)
+            assertNotNull(draft)
+            assertEquals(draft, EditorDraftCodec.read(handle))
+            assertEquals(withImages, repository.notes[existing.id])
+        }
+
+    @Test
+    fun `given failed delete in manual mode when save clicked then stores the pending image changes`() = runTest {
+        val viewModel = openManually(existing.copy(images = listOf(imageA, imageB)))
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageB))
+        advanceUntilIdle()
+        repository.failure = NoteError.Storage
+        viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+        advanceUntilIdle()
+        repository.failure = null
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(imageA.path, copyOf(URI_A)),
+            repository.notes.getValue(existing.id).images.map { it.path },
+        )
+        assertEquals(listOf(imageB.path), imageStorage.deletedPaths)
+        viewModel.assertNoPendingChanges()
+    }
+
+    @Test
+    fun `given image being copied without other changes in manual mode when back clicked then ends showing leave dialog`() =
+        runTest {
+            val viewModel = openManually()
+            val gate = CompletableDeferred<Unit>()
+            imageStorage.saveGate = gate
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            runCurrent()
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                runCurrent()
+                assertFalse(viewModel.state.value.isLeaveDialogVisible)
+
+                gate.complete(Unit)
+                advanceUntilIdle()
+
+                assertTrue(viewModel.state.value.isLeaveDialogVisible)
+                expectNoEvents()
+            }
+            assertTrue(viewModel.state.value.hasUnsavedChanges)
+            assertTrue(imageStorage.deletedPaths.isEmpty())
+        }
+
+    @Test
+    fun `given image being copied when discard chosen then waits for the copy and deletes it before navigating back`() =
+        runTest {
+            val viewModel = openManually()
+            viewModel.typeInTitle("!")
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            advanceUntilIdle()
+            val gate = CompletableDeferred<Unit>()
+            imageStorage.saveGate = gate
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            runCurrent()
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.LeaveDiscardClicked)
+                runCurrent()
+                expectNoEvents()
+
+                gate.complete(Unit)
+
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                assertEquals(listOf(copyOf(URI_A)), imageStorage.deletedPaths)
+            }
+            assertEquals(existing, repository.notes[existing.id])
+        }
+
+    @Test
+    fun `given image being copied in new manual note when delete confirmed then waits for the copy and deletes it`() =
+        runTest {
+            val viewModel = createManualViewModel()
+            viewModel.typeInTitle("Viaje")
+            val gate = CompletableDeferred<Unit>()
+            imageStorage.saveGate = gate
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            runCurrent()
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+                runCurrent()
+                expectNoEvents()
+
+                gate.complete(Unit)
+
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                assertEquals(listOf(copyOf(URI_A)), imageStorage.deletedPaths)
+            }
+            assertTrue(repository.notes.isEmpty())
+        }
+
     /** Escribe [text] en el contenido letra a letra, con el cursor al final, como un teclado. */
     private fun NoteEditorViewModel.typeInContent(text: String) {
         text.forEach { char ->
@@ -2126,6 +3509,8 @@ class NoteEditorViewModelTest {
         var failure: NoteError? = null
         var addImagesFailure: NoteError? = null
         var removeImageFailure: NoteError? = null
+        /** Si no es nulo, `saveNoteChanges` espera a que se complete: simula un guardado en curso. */
+        var saveChangesGate: CompletableDeferred<Unit>? = null
         var saveCount = 0
             private set
         private var nextId = 1L
@@ -2164,14 +3549,38 @@ class NoteEditorViewModelTest {
             notes.replaceAll { _, note -> note.copy(images = note.images.filterNot { it.id == imageId }) }
             return AppResult.Success(Unit)
         }
+
+        override suspend fun saveNoteChanges(
+            note: Note,
+            addedPaths: List<String>,
+            removedImageIds: List<Long>,
+        ): AppResult<Note, NoteError> {
+            saveCount++
+            saveChangesGate?.await()
+            failure?.let { return AppResult.Error(it) }
+            if (note.id != Note.NEW_ID && note.id !in notes) return AppResult.Error(NoteError.NotFound)
+            val id = if (note.id == Note.NEW_ID) nextId++ else note.id
+            // Como la implementación real, todo o nada: imágenes guardadas menos las quitadas, más las nuevas.
+            val images = notes[id]?.images.orEmpty().filterNot { it.id in removedImageIds } +
+                addedPaths.map { NoteImage(id = nextImageId++, path = it) }
+            return AppResult.Success(note.copy(id = id, images = images).also { notes[id] = it })
+        }
+
+        override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> {
+            failure?.let { return AppResult.Error(it) }
+            return AppResult.Success(notes.values.flatMap { note -> note.images.map { it.path } }.toSet())
+        }
     }
 
     private class FakeImageStorage : ImageStorage {
         val unavailableUris = mutableSetOf<String>()
         val savedUris = mutableListOf<String>()
         val deletedPaths = mutableListOf<String>()
+        /** Si no es nulo, cada copia espera a que se complete: simula una copia en curso. */
+        var saveGate: CompletableDeferred<Unit>? = null
 
         override suspend fun save(sourceUri: String): AppResult<String, NoteError> {
+            saveGate?.await()
             if (sourceUri in unavailableUris) return AppResult.Error(NoteError.ImageUnavailable)
             savedUris += sourceUri
             return AppResult.Success(copyOf(sourceUri))
@@ -2180,6 +3589,8 @@ class NoteEditorViewModelTest {
         override suspend fun delete(path: String) {
             deletedPaths += path
         }
+
+        override suspend fun listPaths(): Set<String> = savedUris.map(::copyOf).toSet() - deletedPaths.toSet()
     }
 
     private val imageA = NoteImage(id = 1, path = "/files/note_images/a.jpg")
@@ -2192,6 +3603,7 @@ class NoteEditorViewModelTest {
         const val LETTER_INTERVAL_MS = 300L
         const val URI_A = "content://media/picker/a"
         const val URI_B = "content://media/picker/b"
+        const val URI_C = "content://media/picker/c"
 
         fun copyOf(uri: String) = "/files/note_images/copy-${uri.substringAfterLast('/')}.jpg"
     }

@@ -1,5 +1,6 @@
 package com.example.notesapp.data.settings
 
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -20,6 +21,7 @@ class SettingsRepositoryImplTest {
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val defaultNoteColorKey = stringPreferencesKey("default_note_color")
     private val notesViewKey = stringPreferencesKey("notes_view")
+    private val autoSaveKey = booleanPreferencesKey("auto_save_enabled")
 
     private fun dataStore(storedValue: String? = null) = FakePreferencesDataStore(
         storedValue?.let { preferencesOf(themeModeKey to it) } ?: emptyPreferences(),
@@ -27,6 +29,10 @@ class SettingsRepositoryImplTest {
 
     private fun colorDataStore(storedValue: String? = null) = FakePreferencesDataStore(
         storedValue?.let { preferencesOf(defaultNoteColorKey to it) } ?: emptyPreferences(),
+    )
+
+    private fun autoSaveDataStore(storedValue: Boolean? = null) = FakePreferencesDataStore(
+        storedValue?.let { preferencesOf(autoSaveKey to it) } ?: emptyPreferences(),
     )
 
     private fun viewDataStore(storedValue: String? = null) = FakePreferencesDataStore(
@@ -558,6 +564,196 @@ class SettingsRepositoryImplTest {
             assertEquals(NotesView.LIST, awaitItem())
         }
         assertEquals("list", dataStore.preferences.value[notesViewKey])
+    }
+
+    @Test
+    fun `given no stored auto save when observing then emits null`() = runTest {
+        val repository = SettingsRepositoryImpl(autoSaveDataStore())
+
+        repository.observeAutoSaveEnabled().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given each stored auto save value when observing then emits it`() = runTest {
+        listOf(true, false).forEach { enabled ->
+            val repository = SettingsRepositoryImpl(autoSaveDataStore(storedValue = enabled))
+
+            repository.observeAutoSaveEnabled().test {
+                assertEquals(enabled, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun `given each auto save value when saving then stores it as a boolean`() = runTest {
+        listOf(true, false).forEach { enabled ->
+            val dataStore = autoSaveDataStore()
+
+            val result = SettingsRepositoryImpl(dataStore).setAutoSaveEnabled(enabled)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(enabled, dataStore.preferences.value[autoSaveKey])
+        }
+    }
+
+    @Test
+    fun `given observed auto save when saving then stores its value and emits the new value`() = runTest {
+        val dataStore = autoSaveDataStore(storedValue = true)
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeAutoSaveEnabled().test {
+            assertEquals(true, awaitItem())
+
+            val result = repository.setAutoSaveEnabled(false)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(false, awaitItem())
+            assertEquals(false, dataStore.preferences.value[autoSaveKey])
+        }
+    }
+
+    @Test
+    fun `given saved auto save when the app reopens then emits that value`() = runTest {
+        val dataStore = autoSaveDataStore()
+        SettingsRepositoryImpl(dataStore).setAutoSaveEnabled(false)
+
+        val reopened = SettingsRepositoryImpl(dataStore)
+
+        reopened.observeAutoSaveEnabled().test {
+            assertEquals(false, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given io failure when reading auto save then emits null`() = runTest {
+        val dataStore = autoSaveDataStore(storedValue = false)
+        dataStore.readFailure = IOException("disk failure")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeAutoSaveEnabled().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given unexpected failure when reading auto save then propagates it`() = runTest {
+        val dataStore = autoSaveDataStore(storedValue = false)
+        dataStore.readFailure = IllegalStateException("bug")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeAutoSaveEnabled().test {
+            assertTrue(awaitError() is IllegalStateException)
+        }
+    }
+
+    @Test
+    fun `given io failure when reading auto save and a later save succeeds then emits the saved value`() = runTest {
+        val dataStore = autoSaveDataStore()
+        dataStore.readFailure = IOException("disk failure")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeAutoSaveEnabled().test {
+            assertEquals(null, awaitItem())
+            dataStore.readFailure = null
+
+            val result = repository.setAutoSaveEnabled(false)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(false, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given io failure when saving auto save then returns storage error and keeps emitting the chosen value`() =
+        runTest {
+            val dataStore = autoSaveDataStore(storedValue = true)
+            dataStore.writeFailure = IOException("disk full")
+            val repository = SettingsRepositoryImpl(dataStore)
+
+            repository.observeAutoSaveEnabled().test {
+                assertEquals(true, awaitItem())
+
+                val result = repository.setAutoSaveEnabled(false)
+
+                assertEquals(AppResult.Error(SettingsError.Storage), result)
+                assertEquals(false, awaitItem())
+            }
+            repository.observeAutoSaveEnabled().test {
+                assertEquals(false, awaitItem())
+            }
+            assertEquals(true, dataStore.preferences.value[autoSaveKey])
+        }
+
+    @Test
+    fun `given failed auto save save when the app reopens then emits the last stored value`() = runTest {
+        val dataStore = autoSaveDataStore()
+        dataStore.writeFailure = IOException("disk full")
+        SettingsRepositoryImpl(dataStore).setAutoSaveEnabled(false)
+
+        val reopened = SettingsRepositoryImpl(dataStore)
+
+        reopened.observeAutoSaveEnabled().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given failed auto save save when saving another value succeeds then emits that value`() = runTest {
+        val dataStore = autoSaveDataStore()
+        dataStore.writeFailure = IOException("disk full")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeAutoSaveEnabled().test {
+            assertEquals(null, awaitItem())
+            repository.setAutoSaveEnabled(false)
+            assertEquals(false, awaitItem())
+            dataStore.writeFailure = null
+
+            val result = repository.setAutoSaveEnabled(true)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(true, awaitItem())
+            assertEquals(true, dataStore.preferences.value[autoSaveKey])
+        }
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `given unexpected failure when saving auto save then propagates it`() = runTest {
+        val dataStore = autoSaveDataStore()
+        dataStore.writeFailure = IllegalStateException("bug")
+
+        SettingsRepositoryImpl(dataStore).setAutoSaveEnabled(false)
+    }
+
+    @Test
+    fun `given stored theme, color and view when saving auto save then they are unchanged`() = runTest {
+        val dataStore = FakePreferencesDataStore(
+            preferencesOf(themeModeKey to "light", defaultNoteColorKey to "mint", notesViewKey to "list"),
+        )
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.setAutoSaveEnabled(false)
+
+        assertEquals("light", dataStore.preferences.value[themeModeKey])
+        assertEquals("mint", dataStore.preferences.value[defaultNoteColorKey])
+        assertEquals("list", dataStore.preferences.value[notesViewKey])
+    }
+
+    @Test
+    fun `given stored auto save when saving theme, color and view then auto save is unchanged`() = runTest {
+        val dataStore = autoSaveDataStore(storedValue = false)
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.setThemeMode(ThemeMode.LIGHT)
+        repository.setDefaultNoteColor(NoteColor.MINT)
+        repository.setNotesView(NotesView.LIST)
+
+        repository.observeAutoSaveEnabled().test {
+            assertEquals(false, awaitItem())
+        }
+        assertEquals(false, dataStore.preferences.value[autoSaveKey])
     }
 
     private companion object {

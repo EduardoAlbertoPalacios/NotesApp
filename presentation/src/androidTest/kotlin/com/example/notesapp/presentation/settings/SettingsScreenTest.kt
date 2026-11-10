@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
@@ -19,6 +20,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertWidthIsAtLeast
@@ -36,6 +39,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.test.filters.SdkSuppress
@@ -105,6 +110,7 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
                             SettingsIntent.NotesViewRowClicked -> state.copy(isNotesViewSheetVisible = true)
                             is SettingsIntent.NotesViewSelected -> state.copy(notesView = intent.view)
                             SettingsIntent.NotesViewSheetDismissed -> state.copy(isNotesViewSheetVisible = false)
+                            SettingsIntent.AutoSaveToggled -> state.copy(isAutoSaveEnabled = !state.isAutoSaveEnabled)
                         }
                     },
                 )
@@ -151,6 +157,7 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         row(SettingsTestTags.THEME_ROW).assert(hasText(string(R.string.settings_theme)))
         row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(R.string.settings_default_color)))
         row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.settings_notes_view)))
+        row(SettingsTestTags.AUTO_SAVE_ROW).assert(hasText(string(R.string.settings_auto_save)))
         disabledRowDescriptions.forEach { (tag, description) ->
             row(tag).assertContentDescriptionEquals(description)
         }
@@ -364,7 +371,8 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
             R.string.notes_view_list to "Lista",
             R.string.notes_view_save_error to "No se pudo guardar la vista",
             R.string.settings_auto_save to "Guardado automático",
-            R.string.settings_auto_save_on to "Activado",
+            R.string.settings_auto_save_detail to "Guarda mientras escribes",
+            R.string.settings_auto_save_error to "No se pudo guardar el guardado automático",
             R.string.settings_export to "Exportar notas",
             R.string.settings_trash to "Papelera",
             R.string.settings_coming_soon to "Próximamente",
@@ -852,6 +860,125 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         }
     }
 
+    @Test
+    fun given_auto_save_row_when_displayed_then_is_enabled_with_title_detail_and_switch_role() {
+        setContent()
+
+        row(SettingsTestTags.AUTO_SAVE_ROW)
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assert(hasText(string(R.string.settings_auto_save)))
+            .assert(hasText(string(R.string.settings_auto_save_detail)))
+            .assert(hasRole(Role.Switch))
+    }
+
+    @Test
+    fun given_auto_save_enabled_when_displayed_then_switch_announces_on() {
+        setContent(SettingsUiState(themeMode = activeMode, isAutoSaveEnabled = true))
+
+        row(SettingsTestTags.AUTO_SAVE_ROW)
+            .assertIsOn()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On))
+    }
+
+    @Test
+    fun given_auto_save_disabled_when_displayed_then_switch_announces_off() {
+        setContent(SettingsUiState(themeMode = activeMode, isAutoSaveEnabled = false))
+
+        row(SettingsTestTags.AUTO_SAVE_ROW)
+            .assertIsEnabled()
+            .assertIsOff()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off))
+    }
+
+    @Test
+    fun given_auto_save_row_when_clicked_then_sends_auto_save_toggled() {
+        setContent()
+
+        row(SettingsTestTags.AUTO_SAVE_ROW).performScrollTo().performClick()
+
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.AutoSaveToggled), intents)
+    }
+
+    @Test
+    fun given_auto_save_disabled_when_row_clicked_then_sends_auto_save_toggled() {
+        setContent(SettingsUiState(themeMode = activeMode, isAutoSaveEnabled = false))
+
+        row(SettingsTestTags.AUTO_SAVE_ROW).performScrollTo().performClick()
+
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.AutoSaveToggled), intents)
+    }
+
+    @Test
+    fun given_stateful_screen_when_auto_save_row_clicked_twice_then_switch_turns_off_and_on() {
+        setStatefulContent(SettingsUiState(themeMode = activeMode, isAutoSaveEnabled = true))
+
+        row(SettingsTestTags.AUTO_SAVE_ROW).performScrollTo().performClick()
+        row(SettingsTestTags.AUTO_SAVE_ROW).assertIsOff()
+        row(SettingsTestTags.AUTO_SAVE_ROW).performClick()
+
+        row(SettingsTestTags.AUTO_SAVE_ROW).assertIsOn()
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.AutoSaveToggled, SettingsIntent.AutoSaveToggled), intents)
+    }
+
+    @Test
+    fun given_auto_save_row_when_displayed_then_does_not_show_a_chevron_value_or_disabled_state() {
+        setContent()
+
+        row(SettingsTestTags.AUTO_SAVE_ROW)
+            .assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            .assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription))
+    }
+
+    @Test
+    fun given_auto_save_row_when_displayed_then_touch_target_is_at_least_44_dp() {
+        setContent()
+
+        row(SettingsTestTags.AUTO_SAVE_ROW).assertWidthIsAtLeast(MIN_TOUCH_TARGET).assertHeightIsAtLeast(MIN_TOUCH_TARGET)
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_auto_save_enabled_when_displayed_then_switch_thumb_is_on_the_right_over_primary_track() {
+        setContent(SettingsUiState(themeMode = activeMode, isAutoSaveEnabled = true))
+
+        val pixels = switchPixels()
+
+        assertColorEquals("Círculo encendido", ThemeTestColors.NoteText, pixels.thumbRight)
+        assertColorEquals("Pista a la izquierda del círculo", ThemeTestColors.NoteContainers.getValue(NoteColor.AQUA), pixels.thumbLeft)
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = CAPTURE_MIN_SDK)
+    fun given_auto_save_disabled_when_displayed_then_switch_is_visible_with_thumb_on_the_left_and_off_colors() {
+        setContent(SettingsUiState(themeMode = activeMode, isAutoSaveEnabled = false))
+
+        val pixels = switchPixels()
+
+        assertColorEquals(
+            "Círculo apagado",
+            if (darkTheme) ThemeTestColors.DarkSecondaryText else ThemeTestColors.LightSecondaryText,
+            pixels.thumbLeft,
+        )
+        assertColorEquals("Pista a la derecha del círculo", if (darkTheme) OFF_TRACK_DARK else OFF_TRACK_LIGHT, pixels.thumbRight)
+    }
+
+    /** Lee el centro de las dos posiciones del círculo; el interruptor va al final de la fila, tras su margen. */
+    private fun switchPixels(): SwitchPixels {
+        val node = row(SettingsTestTags.AUTO_SAVE_ROW).performScrollTo()
+        val image = node.captureToImage().toPixelMap()
+        val density = composeRule.density.density
+        fun px(dp: Float) = (dp * density).toInt()
+        val switchLeft = image.width - px(ROW_HORIZONTAL_PADDING_DP) - px(SWITCH_WIDTH_DP)
+        val centerY = image.height / 2
+        return SwitchPixels(
+            thumbLeft = image[switchLeft + px(SWITCH_LEFT_THUMB_CENTER_DP), centerY],
+            thumbRight = image[switchLeft + px(SWITCH_RIGHT_THUMB_CENTER_DP), centerY],
+        )
+    }
+
+    private data class SwitchPixels(val thumbLeft: Color, val thumbRight: Color)
+
     private fun openNotesViewSheetState(view: NotesView = NotesView.GRID) =
         SettingsUiState(themeMode = activeMode, notesView = view, isNotesViewSheetVisible = true)
 
@@ -912,11 +1039,6 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
 
     private val disabledRowDescriptions
         get() = mapOf(
-            SettingsTestTags.AUTO_SAVE_ROW to description(
-                R.string.settings_auto_save,
-                R.string.settings_auto_save_detail,
-                R.string.settings_auto_save_on,
-            ),
             SettingsTestTags.EXPORT_ROW to description(R.string.settings_export, R.string.settings_export_detail),
             SettingsTestTags.TRASH_ROW to description(R.string.settings_trash, R.string.settings_coming_soon),
             SettingsTestTags.HELP_ROW to description(R.string.settings_help, R.string.settings_help_detail),
@@ -960,5 +1082,15 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         private const val SHEET_TIMEOUT_MS = 5_000L
         private const val CAPTURE_MIN_SDK = 26
         private val MIN_TOUCH_TARGET = 44.dp
+
+        /** Medidas del diseño (42 × 26 dp, círculo de 20 dp a 3 dp del borde, fila con 16 dp de margen). */
+        private const val ROW_HORIZONTAL_PADDING_DP = 16f
+        private const val SWITCH_WIDTH_DP = 42f
+        private const val SWITCH_LEFT_THUMB_CENTER_DP = 13f
+        private const val SWITCH_RIGHT_THUMB_CENTER_DP = 29f
+
+        /** Pista apagada: el `outlineVariant` de cada tema. */
+        private val OFF_TRACK_DARK = Color(0xFF2A2A2E)
+        private val OFF_TRACK_LIGHT = Color(0xFFDCE2E5)
     }
 }

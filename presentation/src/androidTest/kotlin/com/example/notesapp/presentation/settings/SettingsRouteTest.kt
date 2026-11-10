@@ -3,6 +3,8 @@ package com.example.notesapp.presentation.settings
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -13,10 +15,12 @@ import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.GetThemeModeUseCase
 import com.example.notesapp.domain.settings.NotesView
+import com.example.notesapp.domain.settings.SetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.SetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.SetNotesViewUseCase
 import com.example.notesapp.domain.settings.SetThemeModeUseCase
@@ -57,6 +61,8 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
                 SetDefaultNoteColorUseCase(repository),
                 GetNotesViewUseCase(repository),
                 SetNotesViewUseCase(repository),
+                GetAutoSaveEnabledUseCase(repository),
+                SetAutoSaveEnabledUseCase(repository),
             )
         }
         composeRule.setContent {
@@ -105,6 +111,40 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
                 .fetchSemanticsNodes().isNotEmpty()
             sheetClosed && errorShown
         }
+    }
+
+    private fun toggleAutoSave() {
+        row(SettingsTestTags.AUTO_SAVE_ROW).assertIsOn().performClick()
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) {
+            composeRule.onAllNodesWithText(string(R.string.settings_auto_save_error))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test
+    fun given_failing_save_when_auto_save_toggled_then_shows_its_error_and_keeps_switch_off() {
+        setFailingSaveContent()
+
+        toggleAutoSave()
+
+        composeRule.onNodeWithText(string(R.string.settings_auto_save_error)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.settings_theme_save_error)).assertDoesNotExist()
+        composeRule.onNodeWithText(string(R.string.settings_default_color_save_error)).assertDoesNotExist()
+        composeRule.onNodeWithText(string(R.string.notes_view_save_error)).assertDoesNotExist()
+        row(SettingsTestTags.AUTO_SAVE_ROW).assertIsOff()
+    }
+
+    @Test
+    fun given_visible_auto_save_error_when_back_clicked_then_navigates_without_waiting_for_error_to_close() {
+        setFailingSaveContent()
+        toggleAutoSave()
+        composeRule.mainClock.autoAdvance = false
+
+        row(SettingsTestTags.BACK).performClick()
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) { navigateBackCalls > 0 }
+
+        assertEquals(1, navigateBackCalls)
+        composeRule.onNodeWithText(string(R.string.settings_auto_save_error)).assertIsDisplayed()
     }
 
     @Test
@@ -201,6 +241,7 @@ private class FailingSaveSettingsRepository(initialMode: ThemeMode) : SettingsRe
     private val themeMode = MutableStateFlow<ThemeMode?>(initialMode)
     private val defaultNoteColor = MutableStateFlow<NoteColor?>(null)
     private val notesView = MutableStateFlow<NotesView?>(null)
+    private val autoSaveEnabled = MutableStateFlow<Boolean?>(null)
 
     override fun observeThemeMode(): Flow<ThemeMode?> = themeMode
 
@@ -220,6 +261,13 @@ private class FailingSaveSettingsRepository(initialMode: ThemeMode) : SettingsRe
 
     override suspend fun setNotesView(view: NotesView): AppResult<Unit, SettingsError> {
         notesView.value = view
+        return AppResult.Error(SettingsError.Storage)
+    }
+
+    override fun observeAutoSaveEnabled(): Flow<Boolean?> = autoSaveEnabled
+
+    override suspend fun setAutoSaveEnabled(enabled: Boolean): AppResult<Unit, SettingsError> {
+        autoSaveEnabled.value = enabled
         return AppResult.Error(SettingsError.Storage)
     }
 }

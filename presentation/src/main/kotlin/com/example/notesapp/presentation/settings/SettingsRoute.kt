@@ -25,6 +25,7 @@ fun SettingsRoute(
     val saveErrorMessage = stringResource(R.string.settings_theme_save_error)
     val defaultColorErrorMessage = stringResource(R.string.settings_default_color_save_error)
     val notesViewErrorMessage = stringResource(R.string.notes_view_save_error)
+    val autoSaveErrorMessage = stringResource(R.string.settings_auto_save_error)
     val currentOnNavigateBack by rememberUpdatedState(onNavigateBack)
 
     LaunchedEffect(viewModel) {
@@ -35,6 +36,7 @@ fun SettingsRoute(
                 SettingsEffect.ShowThemeSaveError -> launch { snackbarHostState.showSnackbar(saveErrorMessage) }
                 SettingsEffect.ShowDefaultColorSaveError -> launch { snackbarHostState.showSnackbar(defaultColorErrorMessage) }
                 SettingsEffect.ShowNotesViewSaveError -> launch { snackbarHostState.showSnackbar(notesViewErrorMessage) }
+                SettingsEffect.ShowAutoSaveSaveError -> launch { snackbarHostState.showSnackbar(autoSaveErrorMessage) }
             }
         }
     }

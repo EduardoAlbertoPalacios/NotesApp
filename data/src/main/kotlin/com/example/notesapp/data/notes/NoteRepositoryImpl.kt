@@ -57,6 +57,20 @@ internal class NoteRepositoryImpl @Inject constructor(
         AppResult.Success(Unit)
     }
 
+    override suspend fun saveNoteChanges(
+        note: Note,
+        addedPaths: List<String>,
+        removedImageIds: List<Long>,
+    ): AppResult<Note, NoteError> = storage {
+        noteDao.saveChanges(note.toEntity(), addedPaths, removedImageIds)
+            ?.let { AppResult.Success(it.toDomain()) }
+            ?: AppResult.Error(NoteError.NotFound)
+    }
+
+    override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> = storage {
+        AppResult.Success(noteDao.getImagePaths().toSet())
+    }
+
     private inline fun <T> storage(block: () -> AppResult<T, NoteError>): AppResult<T, NoteError> =
         try {
             block()

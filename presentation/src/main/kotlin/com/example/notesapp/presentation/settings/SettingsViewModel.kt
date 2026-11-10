@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.GetThemeModeUseCase
 import com.example.notesapp.domain.settings.NotesView
+import com.example.notesapp.domain.settings.SetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.SetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.SetNotesViewUseCase
 import com.example.notesapp.domain.settings.SetThemeModeUseCase
@@ -33,6 +35,8 @@ class SettingsViewModel @Inject constructor(
     private val setDefaultNoteColor: SetDefaultNoteColorUseCase,
     getNotesView: GetNotesViewUseCase,
     private val setNotesView: SetNotesViewUseCase,
+    getAutoSaveEnabled: GetAutoSaveEnabledUseCase,
+    private val setAutoSaveEnabled: SetAutoSaveEnabledUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -51,6 +55,9 @@ class SettingsViewModel @Inject constructor(
         getNotesView()
             .onEach { view -> _state.update { it.copy(notesView = view) } }
             .launchIn(viewModelScope)
+        getAutoSaveEnabled()
+            .onEach { enabled -> _state.update { it.copy(isAutoSaveEnabled = enabled) } }
+            .launchIn(viewModelScope)
     }
 
     fun onIntent(intent: SettingsIntent) {
@@ -66,6 +73,7 @@ class SettingsViewModel @Inject constructor(
             SettingsIntent.NotesViewRowClicked -> _state.update { it.copy(isNotesViewSheetVisible = true) }
             SettingsIntent.NotesViewSheetDismissed -> _state.update { it.copy(isNotesViewSheetVisible = false) }
             is SettingsIntent.NotesViewSelected -> selectNotesView(intent.view)
+            SettingsIntent.AutoSaveToggled -> toggleAutoSave()
         }
     }
 
@@ -91,6 +99,13 @@ class SettingsViewModel @Inject constructor(
         if (view == _state.value.notesView) return
         viewModelScope.launch {
             if (setNotesView(view) is AppResult.Error) _effects.send(SettingsEffect.ShowNotesViewSaveError)
+        }
+    }
+
+    private fun toggleAutoSave() {
+        val enabled = !_state.value.isAutoSaveEnabled
+        viewModelScope.launch {
+            if (setAutoSaveEnabled(enabled) is AppResult.Error) _effects.send(SettingsEffect.ShowAutoSaveSaveError)
         }
     }
 

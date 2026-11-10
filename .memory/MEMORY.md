@@ -8,9 +8,9 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Editor** (`presentation/notes/editor`, Figma `4:1656`): crear, editar, fijar y eliminar; contenido con negrita, subrayado y tachado.
 - **Categorías** Trabajo / Personal: se eligen en el editor (sección "Categoría", Figma `14:4`) y filtran el listado.
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
-- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005) y color predeterminado (007, PR #8).
+- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005), color predeterminado (007, PR #8) y vista de notas (008, PR #9).
 - **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
-- **Vista de notas** (spec 008): implementada en `feat/notes-view`, PR #9 abierto. Funcionan las filas Tema, Color predeterminado y Vista de notas; las otras 4 van atenuadas.
+- **Guardado automático activable** (spec 009): implementado en `feat/auto-save-setting`, PR #10 abierto. Funcionan 4 filas de Ajustes; Exportar, Papelera y Ayuda siguen atenuadas.
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
@@ -27,6 +27,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Deshacer: fotos completas de la nota (`UndoSnapshot`) en un historial del ViewModel (máx. 100, se pierde al salir); reglas en `NoteUndo`. Un carácter escrito/borrado se agrupa; espacio, `\n`, 1 s de pausa o mover el cursor cierran el paso; lo demás es paso propio. Título como `TextFieldValue` para restaurar el cursor. Deshacer hasta el estado de apertura recupera la fecha con `RestoreNoteUseCase`. Foco por estado (`FocusRequest` + `FocusRequestHandled`) para que no se repita al girar.
 - Color predeterminado: en `SettingsRepository` (DataStore), `NoteColor.DEFAULT` = Cielo. Hoja común `NoteColorPickerSheet` para editor y Ajustes. La nota nueva usa `isLoading` hasta leer el color, para no mostrar otro un instante. `NoteMappers` y las notas semilla siguen en `AQUA` a propósito.
 - Vista de notas: en `SettingsRepository`; `NotesView.DEFAULT` = Cuadrícula. Mis notas usa un solo `LazyVerticalStaggeredGrid` con 1 o 2 columnas. `isLoading` no termina hasta tener notas y vista. Tareas seguidas: `buildCardContent(flowTasks)` marca con `TASK_BREAK` y `wrapTasks` decide los cortes midiendo.
+- Guardado automático: ajuste en `SettingsRepository` (encendido por defecto). El editor elige modo al abrir. Manual: nada toca la base hasta Guardar; imágenes nuevas se copian ya pero se asocian al guardar (`NoteDao.saveChanges`, una transacción); borrador en `SavedStateHandle` (sobrevive a la muerte del proceso, no al cierre desde recientes; 100 000 caracteres ≈ 210 KB). `CleanUpImageFilesUseCase` al salir del editor compara por nombre de archivo, nunca por ruta.
 - Formato: el contenido sigue en texto plano y el formato va aparte como tramos `FormatSpan` en la columna `content_spans` (codificación propia `start,end,F;…`, sin dependencias). Reglas en `NoteFormatting` (`:domain`); el editor pinta con `VisualTransformation`. Los formatos activados sin escribir no se guardan ni cambian la fecha.
 
 ## Aprendizajes y errores a evitar
