@@ -10,7 +10,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
 - En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005), color predeterminado (007, PR #8) y vista de notas (008, PR #9).
 - **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
-- **Guardado automático activable** (spec 009): implementado en `feat/auto-save-setting`, sin PR. Funcionan 4 filas de Ajustes; Exportar, Papelera y Ayuda siguen atenuadas.
+- **Guardado automático activable** (spec 009): implementado en `feat/auto-save-setting`, PR #10 abierto. Funcionan 4 filas de Ajustes; Exportar, Papelera y Ayuda siguen atenuadas.
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
