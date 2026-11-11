@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.AddNoteImagesUseCase
+import com.example.notesapp.domain.notes.BuildNoteShareUseCase
 import com.example.notesapp.domain.notes.CleanUpImageFilesUseCase
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
 import com.example.notesapp.domain.notes.DiscardImageCopiesUseCase
@@ -68,6 +69,7 @@ class NoteEditorViewModel @Inject constructor(
     private val saveNoteChanges: SaveNoteChangesUseCase,
     private val discardImageCopies: DiscardImageCopiesUseCase,
     private val cleanUpImageFiles: CleanUpImageFilesUseCase,
+    private val buildNoteShare: BuildNoteShareUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NoteEditorUiState())
@@ -136,6 +138,7 @@ class NoteEditorViewModel @Inject constructor(
             NoteEditorIntent.AddImageClicked -> send(NoteEditorEffect.OpenImagePicker)
             is NoteEditorIntent.ImagesPicked -> addImages(intent.uris)
             is NoteEditorIntent.RemoveImageClicked -> removeImage(intent.image)
+            NoteEditorIntent.ShareClicked -> share()
             is NoteEditorIntent.CategoryClicked -> saveNow {
                 it.copy(category = intent.category.takeIf { category -> category != it.category })
             }
@@ -755,6 +758,29 @@ class NoteEditorViewModel @Inject constructor(
                     finishSession()
                 }
                 is AppResult.Error -> send(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error))
+            }
+        }
+    }
+
+    /**
+     * Comparte lo que se ve en el editor, incluidos los cambios y las imágenes pendientes; no guarda nada.
+     * El aviso de imágenes que faltan va después, para no retrasar el menú de compartir.
+     */
+    private fun share() {
+        val current = _state.value
+        if (!current.isNoteVisible || !current.canShare) return
+        viewModelScope.launch {
+            val share = buildNoteShare(
+                title = current.title.text,
+                content = current.content.text,
+                tasks = current.contentTasks,
+                imagePaths = current.images.map { it.path },
+            )
+            if (share.text != null || share.imagePaths.isNotEmpty()) {
+                _effects.send(NoteEditorEffect.ShareNote(share.subject, share.text, share.imagePaths))
+            }
+            if (share.missingImageCount > 0) {
+                _effects.send(NoteEditorEffect.ShowMessage(R.string.note_editor_share_missing_images))
             }
         }
     }

@@ -7,6 +7,7 @@ import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.common.time.TimeProvider
 import com.example.notesapp.domain.notes.AddNoteImagesUseCase
+import com.example.notesapp.domain.notes.BuildNoteShareUseCase
 import com.example.notesapp.domain.notes.ChecklistItem
 import com.example.notesapp.domain.notes.CleanUpImageFilesUseCase
 import com.example.notesapp.domain.notes.DeleteNoteUseCase
@@ -122,6 +123,7 @@ class NoteEditorViewModelTest {
         saveNoteChanges = SaveNoteChangesUseCase(repository, imageStorage, TimeProvider { NOW }),
         discardImageCopies = DiscardImageCopiesUseCase(imageStorage),
         cleanUpImageFiles = CleanUpImageFilesUseCase(repository, imageStorage),
+        buildNoteShare = BuildNoteShareUseCase(imageStorage),
     )
 
     private fun savedStateHandle(noteId: Long? = null, category: String? = null) = SavedStateHandle(
@@ -3480,6 +3482,293 @@ class NoteEditorViewModelTest {
             assertTrue(repository.notes.isEmpty())
         }
 
+    // --- Compartir (spec 010) ---
+
+    private fun shareMessage() = NoteEditorEffect.ShowMessage(R.string.note_editor_share_missing_images)
+
+    @Test
+    fun `given new empty note when created then cannot share`() = runTest {
+        val viewModel = createViewModel()
+
+        assertFalse(viewModel.state.value.canShare)
+    }
+
+    @Test
+    fun `given only spaces typed when editing then cannot share`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.typeInTitle("  ")
+        viewModel.typeInContent(" \n ")
+
+        assertFalse(viewModel.state.value.canShare)
+    }
+
+    @Test
+    fun `given title typed when editing then can share`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.typeInTitle("Ideas")
+
+        assertTrue(viewModel.state.value.canShare)
+    }
+
+    @Test
+    fun `given content typed when editing then can share`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.typeInContent("Libreta")
+
+        assertTrue(viewModel.state.value.canShare)
+    }
+
+    @Test
+    fun `given note with only images when opened then can share`() = runTest {
+        repository.notes[existing.id] = existing.copy(title = "", content = "", images = listOf(imageA))
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.canShare)
+    }
+
+    @Test
+    fun `given existing note when share clicked then emits share with title content and images`() = runTest {
+        repository.notes[existing.id] = existing.copy(images = listOf(imageA, imageB))
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+
+            assertEquals(
+                NoteEditorEffect.ShareNote(
+                    subject = existing.title,
+                    text = "${existing.title}\n\n${existing.content}",
+                    imagePaths = listOf(imageA.path, imageB.path),
+                ),
+                awaitItem(),
+            )
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given note with tasks when share clicked then text marks done and pending tasks`() = runTest {
+        repository.notes[existing.id] = existing.copy(
+            content = "Comprar pan\nLlamar a Ana",
+            contentTasks = listOf(task(0, isDone = true), task(1)),
+        )
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+
+            val share = awaitItem() as NoteEditorEffect.ShareNote
+            assertEquals("${existing.title}\n\n☑ Comprar pan\n☐ Llamar a Ana", share.text)
+        }
+    }
+
+    @Test
+    fun `given unsaved typing in automatic mode when share clicked then shares visible text without saving`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+            viewModel.typeInTitle("!")
+
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+            runCurrent()
+
+            assertEquals(0, repository.saveCount)
+            assertEquals(existing, repository.notes[existing.id])
+            viewModel.effects.test {
+                val share = awaitItem() as NoteEditorEffect.ShareNote
+                assertEquals(existing.title + "!", share.subject)
+                assertEquals("${existing.title}!\n\n${existing.content}", share.text)
+            }
+        }
+
+    @Test
+    fun `given removed image in automatic mode when share clicked then shares only the visible images`() = runTest {
+        repository.notes[existing.id] = existing.copy(images = listOf(imageA, imageB))
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+
+            assertEquals(listOf(imageB.path), (awaitItem() as NoteEditorEffect.ShareNote).imagePaths)
+        }
+    }
+
+    @Test
+    fun `given saved note in automatic mode when share clicked then nothing is saved nor its date changed`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val stateBefore = viewModel.state.value
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+            awaitItem()
+        }
+        advanceUntilIdle()
+
+        assertEquals(0, repository.saveCount)
+        assertEquals(existing, repository.notes[existing.id])
+        assertEquals(stateBefore, viewModel.state.value)
+    }
+
+    @Test
+    fun `given pending changes in manual mode when share clicked then shares them and keeps them pending`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+
+            val share = awaitItem() as NoteEditorEffect.ShareNote
+            assertEquals(existing.title + "!", share.subject)
+            assertEquals("${existing.title}!\n\n${existing.content}", share.text)
+        }
+        advanceUntilIdle()
+
+        viewModel.assertPendingAndNothingStored(existing)
+        assertEquals(dateFormatter.format(existing.updatedAt), viewModel.state.value.date)
+    }
+
+    @Test
+    fun `given pending and removed images in manual mode when share clicked then shares the visible ones`() = runTest {
+        val withImages = existing.copy(images = listOf(imageA, imageB))
+        val viewModel = openManually(withImages)
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+
+            assertEquals(
+                listOf(imageB.path, copyOf(URI_A)),
+                (awaitItem() as NoteEditorEffect.ShareNote).imagePaths,
+            )
+        }
+        advanceUntilIdle()
+
+        viewModel.assertPendingAndNothingStored(withImages)
+        assertTrue(imageStorage.deletedPaths.isEmpty())
+    }
+
+    @Test
+    fun `given some images missing when share clicked then shares the rest and then warns`() = runTest {
+        repository.notes[existing.id] = existing.copy(images = listOf(imageA, imageB))
+        imageStorage.missingPaths += imageA.path
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+
+            assertEquals(
+                NoteEditorEffect.ShareNote(
+                    subject = existing.title,
+                    text = "${existing.title}\n\n${existing.content}",
+                    imagePaths = listOf(imageB.path),
+                ),
+                awaitItem(),
+            )
+            assertEquals(shareMessage(), awaitItem())
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given only images and all missing when share clicked then only warns`() = runTest {
+        repository.notes[existing.id] = existing.copy(title = "", content = "", images = listOf(imageA, imageB))
+        imageStorage.missingPaths += listOf(imageA.path, imageB.path)
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+
+            assertEquals(shareMessage(), awaitItem())
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given text and all images missing when share clicked then shares text and warns`() = runTest {
+        repository.notes[existing.id] = existing.copy(images = listOf(imageA))
+        imageStorage.missingPaths += imageA.path
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+
+            assertEquals(emptyList<String>(), (awaitItem() as NoteEditorEffect.ShareNote).imagePaths)
+            assertEquals(shareMessage(), awaitItem())
+        }
+    }
+
+    @Test
+    fun `given empty note when share clicked then nothing is emitted`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+            advanceUntilIdle()
+
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given only spaces when share clicked then nothing is emitted`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.typeInTitle("   ")
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+            runCurrent()
+
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given note still loading with text when share clicked then nothing is emitted`() = runTest {
+        val viewModel = buildViewModel()
+        advanceUntilIdle()
+        viewModel.typeInTitle("Ideas")
+        assertTrue(viewModel.state.value.isLoading)
+        assertTrue(viewModel.state.value.canShare)
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+            runCurrent()
+
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given load error when share clicked then nothing is emitted`() = runTest {
+        val viewModel = createViewModel(noteId = 99)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.ShareClicked)
+            runCurrent()
+
+            expectNoEvents()
+        }
+    }
+
     /** Escribe [text] en el contenido letra a letra, con el cursor al final, como un teclado. */
     private fun NoteEditorViewModel.typeInContent(text: String) {
         text.forEach { char ->
@@ -3591,6 +3880,11 @@ class NoteEditorViewModelTest {
         }
 
         override suspend fun listPaths(): Set<String> = savedUris.map(::copyOf).toSet() - deletedPaths.toSet()
+
+        /** Rutas cuyo archivo ya no existe, aunque la nota las siga mostrando. */
+        val missingPaths = mutableSetOf<String>()
+
+        override suspend fun exists(path: String): Boolean = path !in missingPaths && path !in deletedPaths
     }
 
     private val imageA = NoteImage(id = 1, path = "/files/note_images/a.jpg")

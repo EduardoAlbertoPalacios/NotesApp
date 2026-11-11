@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solo la carpeta de imágenes de las notas; ninguna otra carpeta de la app queda expuesta. -->
+<paths>
+    <files-path
+        name="note_images"
+        path="note_images/" />
+</paths>

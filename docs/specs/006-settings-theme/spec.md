@@ -103,7 +103,7 @@ El botón de ajustes de Mis notas se ve, pero no lleva a ninguna parte. Además,
 - Colores dinámicos del sistema y temas distintos de Claro y Oscuro.
 - Cambiar los colores de las notas o agregar colores nuevos.
 - Rediseñar pantallas existentes, más allá de su paleta en tema Claro.
-- Mostrar el botón Compartir que aparece en el frame `40:1037`; sigue oculto hasta tener esa función.
+- El botón Compartir del frame `40:1037`: lo cubre la spec 010.
 - Sincronizar el tema entre dispositivos.
 
 ## Criterios de finalización

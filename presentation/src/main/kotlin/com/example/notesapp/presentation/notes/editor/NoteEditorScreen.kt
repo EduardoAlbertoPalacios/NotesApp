@@ -101,6 +101,7 @@ import kotlin.math.roundToInt
 object NoteEditorTestTags {
     const val BACK = "note_editor_back"
     const val PIN = "note_editor_pin"
+    const val SHARE = "note_editor_share"
     const val MORE = "note_editor_more"
     const val DELETE = "note_editor_delete"
     const val TITLE = "note_editor_title"
@@ -154,6 +155,7 @@ fun NoteEditorScreen(
                     showNoteActions = state.isNoteVisible,
                     showSaveButton = state.isManualSave,
                     canSave = state.hasUnsavedChanges,
+                    canShare = state.canShare,
                     onIntent = onIntent,
                 )
                 when {
@@ -190,6 +192,7 @@ private fun NoteEditorTopBar(
     showNoteActions: Boolean,
     showSaveButton: Boolean,
     canSave: Boolean,
+    canShare: Boolean,
     onIntent: (NoteEditorIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -239,6 +242,13 @@ private fun NoteEditorTopBar(
                     modifier = Modifier.testTag(NoteEditorTestTags.PIN),
                     isActive = isPinned,
                 )
+                EditorIconButton(
+                    iconRes = R.drawable.ic_share,
+                    contentDescription = stringResource(R.string.note_editor_share),
+                    onClick = { onIntent(NoteEditorIntent.ShareClicked) },
+                    modifier = Modifier.testTag(NoteEditorTestTags.SHARE),
+                    enabled = canShare,
+                )
                 MoreOptions(onIntent = onIntent)
             }
         }
@@ -284,12 +294,17 @@ private fun EditorIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
+    enabled: Boolean = true,
 ) {
+    val contentColor = if (isActive) NotesTheme.accent.content else MaterialTheme.colorScheme.onBackground
     IconButton(
         onClick = onClick,
         modifier = modifier.size(NotesTheme.sizes.iconAction),
+        enabled = enabled,
         colors = IconButtonDefaults.iconButtonColors(
-            contentColor = if (isActive) NotesTheme.accent.content else MaterialTheme.colorScheme.onBackground,
+            contentColor = contentColor,
+            // Igual que Guardar: sobre el color de la nota se atenúa el mismo color.
+            disabledContentColor = contentColor.copy(alpha = DisabledAlpha),
         ),
     ) {
         Icon(painter = painterResource(iconRes), contentDescription = contentDescription)

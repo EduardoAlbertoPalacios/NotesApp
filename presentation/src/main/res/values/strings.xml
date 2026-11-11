@@ -31,6 +31,9 @@
     <string name="note_editor_pin">Fijar nota</string>
     <string name="note_editor_unpin">Dejar de fijar nota</string>
     <string name="note_editor_more_options">Más opciones</string>
+    <string name="note_editor_share">Compartir nota</string>
+    <string name="note_editor_share_missing_images">Algunas imágenes no se pudieron compartir</string>
+    <string name="note_editor_share_no_apps">No hay apps para compartir esta nota</string>
     <string name="note_editor_title_placeholder">Título</string>
     <string name="note_editor_content_placeholder">Escribe tu nota…</string>
     <string name="note_editor_saving">Guardando…</string>

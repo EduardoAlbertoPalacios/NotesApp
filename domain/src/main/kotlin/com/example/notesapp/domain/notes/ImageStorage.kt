@@ -11,4 +11,7 @@ interface ImageStorage {
 
     /** Rutas de todas las copias guardadas. */
     suspend fun listPaths(): Set<String>
+
+    /** Si [path] es una copia guardada que todavía existe. */
+    suspend fun exists(path: String): Boolean
 }

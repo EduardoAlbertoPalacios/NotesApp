@@ -51,6 +51,9 @@ data class NoteEditorUiState(
 ) {
     /** La nota ya cargó sin error: solo entonces se pinta su color y se muestran sus acciones. */
     val isNoteVisible: Boolean get() = !isLoading && loadError == null
+
+    /** Hay algo que compartir: título o contenido con algo más que espacios, o alguna imagen. */
+    val canShare: Boolean get() = title.text.isNotBlank() || content.text.isNotBlank() || images.isNotEmpty()
 }
 
 /**
