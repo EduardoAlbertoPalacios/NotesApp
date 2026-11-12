@@ -25,6 +25,8 @@ class FakeImageStorage : ImageStorage {
 
     override suspend fun listPaths(): Set<String> = storedPaths.toSet()
 
+    override suspend fun exists(path: String): Boolean = path in storedPaths
+
     companion object {
         fun copyOf(uri: String) = "/files/note_images/${uri.substringAfterLast('/')}.jpg"
     }

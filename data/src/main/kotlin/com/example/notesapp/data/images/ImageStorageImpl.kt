@@ -47,9 +47,21 @@ internal class ImageStorageImpl @Inject constructor(
         withContext(ioDispatcher) {
             val file = File(path)
             // Solo borra copias propias, nunca archivos fuera de la carpeta de imágenes de la app.
-            if (file.parentFile?.canonicalPath == directory.canonicalPath) file.delete()
+            if (isOwnCopy(file)) file.delete()
         }
     }
+
+    override suspend fun exists(path: String): Boolean = withContext(ioDispatcher) {
+        val file = File(path)
+        try {
+            isOwnCopy(file) && file.isFile
+        } catch (error: IOException) {
+            // Si no se puede resolver la ruta, la imagen cuenta como que falta.
+            false
+        }
+    }
+
+    private fun isOwnCopy(file: File): Boolean = file.parentFile?.canonicalPath == directory.canonicalPath
 
     override suspend fun listPaths(): Set<String> = withContext(ioDispatcher) {
         directory.listFiles().orEmpty().filter { it.isFile }.mapTo(mutableSetOf()) { it.absolutePath }

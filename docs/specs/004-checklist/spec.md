@@ -105,7 +105,7 @@ El editor muestra en su barra el botón «Lista de tareas», pero está deshabil
 - Contadores de progreso («2 de 5 hechas») en el editor o en la tarjeta.
 - Filtrar o buscar por estado de las tareas.
 - Convertir otros caracteres distintos de «☐» y «☑» (por ejemplo «[ ]», «- [x]» o «✓»).
-- Copiar o compartir las tareas hacia otras apps con sus casillas.
+- Copiar las tareas hacia otras apps con sus casillas. Compartirlas como texto con «☐» y «☑» lo cubre la spec 010.
 - Deshacer y rehacer (el botón «Deshacer» sigue deshabilitado).
 
 ## Criterios de finalización

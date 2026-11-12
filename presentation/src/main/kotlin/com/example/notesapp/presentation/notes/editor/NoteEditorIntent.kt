@@ -47,4 +47,6 @@ sealed interface NoteEditorIntent {
     /** Uris elegidas en el selector de fotos; vacía si el usuario lo cerró sin elegir. */
     data class ImagesPicked(val uris: List<String>) : NoteEditorIntent
     data class RemoveImageClicked(val image: NoteImage) : NoteEditorIntent
+    /** Comparte la nota tal como se ve, sin guardarla. */
+    data object ShareClicked : NoteEditorIntent
 }
