@@ -8,9 +8,9 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Editor** (`presentation/notes/editor`, Figma `4:1656`): crear, editar, fijar y eliminar; contenido con negrita, subrayado y tachado.
 - **Categorías** Trabajo / Personal: se eligen en el editor (sección "Categoría", Figma `14:4`) y filtran el listado.
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
-- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005), color predeterminado (007, PR #8), vista de notas (008, PR #9) y guardado automático activable (009, PR #10). Funcionan 4 filas de Ajustes; Exportar, Papelera y Ayuda siguen atenuadas.
+- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005), color predeterminado (007, PR #8), vista de notas (008, PR #9) y guardado automático activable (009, PR #10) y compartir nota (010, PR #11). Funcionan 5 filas de Ajustes; Papelera y Ayuda siguen atenuadas.
 - **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
-- **Compartir nota** (spec 010): implementado en `feat/share-note`, PR pendiente. WhatsApp descarta la imagen con tipo `*/*`: con imágenes se usa `image/*`.
+- **Exportar notas** (spec 011): implementado en `feat/export-notes`, PR pendiente. Ajustes → pantalla de selección → .zip con un PDF A4 por nota, guardado con el selector del sistema.
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
@@ -20,7 +20,8 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Room con `AutoMigration`: v1→v2 `category`, v2→v3 `note_images`, v3→v4 `content_spans`. Manuales en `local/migration/Migrations.kt`: v4→v5 `SAND`→`VANILLA`; v5→v6 `content_tasks` y conversión de «☐»/«☑» en tareas recolocando el formato. `room-testing` aprobado para `MigrationTest`.
 - Temas Claro y Oscuro (por defecto) según Figma (`40:956`, `40:1037`, `40:1115`, `40:1211`); sin dynamic color. `setApplicationNightMode` va en `onStop`: con la app en pantalla deja las barras del sistema con el tema anterior. Tokens en `NotesTheme` (spacing, sizes, radii, noteColors). Navegación con rutas string (sin plugin de serialization). Editor: `notes/editor?noteId=` (0 = nueva).
 - Editor: autoguardado 500 ms tras dejar de escribir y al salir; nota nueva vacía no se crea (`SaveNoteUseCase` → `EmptyNote`). Vaciar una nota existente conserva su última versión.
-- Compartir: `BuildNoteShareUseCase` arma asunto, texto («☐ »/«☑ ») e imágenes que existen desde lo que se ve, sin guardar. La `Route` arma el `Intent` (`FileProvider` de `:app`, solo `note_images/`, URI también en `ClipData`). `androidx.core` declarado en `:presentation` (aprobado).
+- Exportar: PDF con `PdfDocument` y .zip con `java.util.zip` (sin dependencias). Se genera en `cacheDir/exports` **antes** de abrir `CreateDocument` (D1: el selector crea el destino vacío al confirmar). Nombres en `NoteExportNaming` (`:domain`); dibujo en `:data` (`PdfNotesExporter`, `NotePdfRenderer`) con textos propios en `data/res` (D2). El resultado vuelve a Ajustes por `SavedStateHandle` y los avisos salen como efectos del `SettingsViewModel`.
+- Compartir: `BuildNoteShareUseCase` arma asunto, texto («☐ »/«☑ ») e imágenes que existen desde lo que se ve, sin guardar. La `Route` arma el `Intent` (`FileProvider` de `:app`, solo `note_images/`, URI también en `ClipData`; con imágenes tipo `image/*`, porque con `*/*` WhatsApp las descarta). `androidx.core` declarado en `:presentation` (aprobado).
 - Color: 8 valores de `NoteColor` en el orden de la paleta (`NONE` = «Sin color»). El amarillo guardado como `SAND` era «Vainilla»: se migró a `VANILLA` y `SAND` es ahora el beige «Arena». El selector (`NoteColorSheet`) guarda la opción en `pickerColor` hasta «Aplicar color»; aplicar el mismo color no guarda. El editor se pinta con `NoteSurfaceTheme` (tema anidado) y `AppColorsTheme` restaura el oscuro en barra, menús y botón de imagen. `Slate` oscurecido a `#3B4C50` para 4,5:1.
 - Imágenes: selector de fotos del sistema (sin permisos); se copian a `filesDir/note_images` porque el acceso a la original es temporal. Tabla `note_images` (FK con CASCADE). Borrar nota/imagen borra también el archivo. Agregar imagen actualiza la fecha de edición.
 - Tareas: líneas del contenido (texto plano) marcadas aparte como `ChecklistItem(line, isDone)` en `content_tasks` (`línea,estado;…`). Reglas en `NoteChecklist` (`:domain`); `onTextChanged` recibe el cursor para ubicar Intro/borrar/pegar. Editor: un solo campo; las casillas se dibujan encima con el `TextLayoutResult` y el texto deja hueco con `ParagraphStyle`. Tarjeta: casillas con `InlineTextContent`.
@@ -32,18 +33,18 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 
 ## Aprendizajes y errores a evitar
 - No hay `java` en PATH: usar `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`. AGP 9 trae Kotlin integrado: los módulos Android no aplican `kotlin-android`; los JVM puros usan `kotlin-jvm`.
-- Pruebas JVM que crean `SQLiteException` necesitan `unitTests.isReturnDefaultValues = true` (`:data`).
+- Pruebas JVM que crean `SQLiteException` (o usan `Log`) necesitan `unitTests.isReturnDefaultValues = true` (`:data`).
 - Pruebas de UI de campos de texto: usar un estado que se actualice con los intents; con estado fijo el campo reenvía el valor viejo al perder el foco.
 - Scripts de reemplazo: verificar siempre que el texto se encontró (un reemplazo silencioso dejó sin guardar la categoría).
-- `LazyVerticalStaggeredGrid` reparte por columna más corta: el orden visual difiere del mock de Figma (columnas fijas).
 - `connectedDebugAndroidTest` desinstala la app del emulador al terminar: sus datos vuelven a las notas semilla.
 - Probar migraciones de verdad: compilar `main` en un `git worktree` temporal, instalarlo desde cero y luego `adb install -r` la rama; leer la base con `run-as ... cat` y `sqlite3` local (el emulador no trae `sqlite3`).
 - Compose 1.10: un párrafo que termina en `\n` dibuja una línea vacía de más y cada párrafo recorta su altura (`Trim`). Para la sangría por línea: `\n`→`\u200B` en la transformación y `LineHeightStyle.Trim.None`.
 - Semántica: un `semantics {}` junto a `toggleable` deja la etiqueta en un nodo aparte; usar `clearAndSetSemantics`. `appendInlineContent` no admite `alternateText` vacío.
 - Al cambiar una `@Entity`, sube la versión de la base antes de compilar: si no, KSP reescribe el JSON del esquema publicado.
 - Compose puede cortar la línea entre una casilla en línea (`InlineTextContent`) y su texto, aunque se use `WORD JOINER` y espacios sin corte: hay que medir y poner los saltos a mano.
-- `adb` no está en PATH: `~/Library/Android/sdk/platform-tools/adb`. Figma plan Starter tiene límite de llamadas MCP.
-- Emulador: Mensajes solo tiene SMS (rechaza adjuntos con `ATTACHMENTS_NOT_SUPPORTED`) y Drive pide cuenta; para comprobar imágenes compartidas, mirar en logcat que la app de destino las leyó.
+- macOS: el `unzip` de la terminal no abre nombres UTF-8 (el .zip está bien, flag `0x800`); extraer con `zipfile` de Python. Renderizar páginas de PDF con PDFKit en un script `swift`.
+- `adb` no está en PATH: `~/Library/Android/sdk/platform-tools/adb`. El emulador está en inglés (fechas «12 Nov 2026, 4:34 PM»). Figma plan Starter tiene límite de llamadas MCP.
+- Emulador: Mensajes solo tiene SMS y Drive pide cuenta; para imágenes compartidas, mirar en logcat que la app de destino las leyó.
 - Emulador: Atrás con el teclado cerrado sale del editor (y descarta el historial de deshacer). El emulador tiene teclado físico: Gboard solo muestra su barra flotante (tapa la izquierda), así que la escritura con teclado en pantalla no se puede probar ahí.
 
 ## Próximos pasos
