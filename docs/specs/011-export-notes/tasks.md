@@ -83,7 +83,7 @@ Tareas en orden de dependencia: cada una solo necesita las anteriores. Las prueb
   - **Cubre:** principio 2
   - **Hecho cuando:** ninguna spec contradice a la 011 ni al código.
 
-- [ ] **T14. Pruebas completas.** Ejecutar `./gradlew test` y `./gradlew connectedDebugAndroidTest`.
+- [x] **T14. Pruebas completas.** Ejecutar `./gradlew test` y `./gradlew connectedDebugAndroidTest`.
   - **Cubre:** criterios de finalización
   - **Hecho cuando:** ambos pasan.
 
@@ -108,6 +108,6 @@ Tareas en orden de dependencia: cada una solo necesita las anteriores. Las prueb
   - **Cubre:** —
   - **Hecho cuando:** el archivo refleja la spec 011.
 
-- [ ] **T19. Commit y PR** (con tu confirmación). Marcar spec, plan y tareas como implementados. Hacer el commit con Conventional Commits y abrir el PR hacia `main`.
+- [x] **T19. Commit y PR** (con tu confirmación). Marcar spec, plan y tareas como implementados. Hacer el commit con Conventional Commits y abrir el PR hacia `main`.
   - **Cubre:** principios 2 y 4
   - **Hecho cuando:** el PR está abierto.
