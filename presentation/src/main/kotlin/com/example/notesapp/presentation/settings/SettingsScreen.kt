@@ -71,7 +71,7 @@ internal object SettingsTestTags {
     const val NOTES_VIEW_OPTION = "settings_notes_view_option_"
 }
 
-/** Funcionan las filas Tema, Color predeterminado, Vista de notas y Guardado automático; las demás se ven deshabilitadas hasta tener su propia spec. */
+/** Funcionan las filas Tema, Color predeterminado, Vista de notas, Guardado automático y Exportar notas; las demás se ven deshabilitadas hasta tener su propia spec. */
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
@@ -182,12 +182,7 @@ private fun SettingsContent(
                 onToggle = { onIntent(SettingsIntent.AutoSaveToggled) },
             )
             GroupDivider()
-            DisabledRow(
-                iconRes = R.drawable.ic_export,
-                titleRes = R.string.settings_export,
-                detailRes = R.string.settings_export_detail,
-                testTag = SettingsTestTags.EXPORT_ROW,
-            )
+            ExportRow(onClick = { onIntent(SettingsIntent.ExportRowClicked) })
             GroupDivider()
             DisabledRow(
                 iconRes = R.drawable.ic_trash,
@@ -341,6 +336,20 @@ private fun NotesViewRow(view: NotesView, onClick: () -> Unit, modifier: Modifie
             style = NotesTheme.typography.settingsValue,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Chevron()
+    }
+}
+
+@Composable
+private fun ExportRow(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    SettingsRow(
+        iconRes = R.drawable.ic_export,
+        titleRes = R.string.settings_export,
+        detailRes = R.string.settings_export_detail,
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(SettingsTestTags.EXPORT_ROW),
+    ) {
         Chevron()
     }
 }

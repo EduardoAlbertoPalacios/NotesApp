@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Textos que se dibujan en los PDF de la exportación (spec 011, decisión D2). Llevan el prefijo
+         export_pdf_ para no chocar con los recursos de :presentation al fusionarse en :app. -->
+    <string name="export_pdf_untitled">Sin título</string>
+    <string name="export_pdf_category_work">Trabajo</string>
+    <string name="export_pdf_category_personal">Personal</string>
+</resources>

@@ -111,6 +111,8 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
                             is SettingsIntent.NotesViewSelected -> state.copy(notesView = intent.view)
                             SettingsIntent.NotesViewSheetDismissed -> state.copy(isNotesViewSheetVisible = false)
                             SettingsIntent.AutoSaveToggled -> state.copy(isAutoSaveEnabled = !state.isAutoSaveEnabled)
+                            SettingsIntent.ExportRowClicked -> state
+                            is SettingsIntent.ExportFinished -> state
                         }
                     },
                 )
@@ -158,6 +160,7 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         row(SettingsTestTags.DEFAULT_COLOR_ROW).assert(hasText(string(R.string.settings_default_color)))
         row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.settings_notes_view)))
         row(SettingsTestTags.AUTO_SAVE_ROW).assert(hasText(string(R.string.settings_auto_save)))
+        row(SettingsTestTags.EXPORT_ROW).assert(hasText(string(R.string.settings_export)))
         disabledRowDescriptions.forEach { (tag, description) ->
             row(tag).assertContentDescriptionEquals(description)
         }
@@ -931,6 +934,37 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
     }
 
     @Test
+    fun given_export_row_when_displayed_then_is_enabled_button_with_title_and_detail() {
+        setContent()
+
+        row(SettingsTestTags.EXPORT_ROW)
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assert(hasRole(Role.Button))
+            .assert(hasText(string(R.string.settings_export)))
+            .assert(hasText(string(R.string.settings_export_detail)))
+            .assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+    }
+
+    @Test
+    fun given_export_row_when_clicked_then_sends_export_row_clicked() {
+        setContent()
+
+        row(SettingsTestTags.EXPORT_ROW).performScrollTo().performClick()
+
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.ExportRowClicked), intents)
+    }
+
+    @Test
+    fun given_export_row_when_displayed_then_touch_target_is_at_least_44_dp() {
+        setContent()
+
+        row(SettingsTestTags.EXPORT_ROW).assertWidthIsAtLeast(MIN_TOUCH_TARGET).assertHeightIsAtLeast(MIN_TOUCH_TARGET)
+    }
+
+    @Test
     fun given_auto_save_row_when_displayed_then_touch_target_is_at_least_44_dp() {
         setContent()
 
@@ -1039,7 +1073,6 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
 
     private val disabledRowDescriptions
         get() = mapOf(
-            SettingsTestTags.EXPORT_ROW to description(R.string.settings_export, R.string.settings_export_detail),
             SettingsTestTags.TRASH_ROW to description(R.string.settings_trash, R.string.settings_coming_soon),
             SettingsTestTags.HELP_ROW to description(R.string.settings_help, R.string.settings_help_detail),
         )

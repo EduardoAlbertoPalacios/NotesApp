@@ -17,4 +17,8 @@ sealed interface SettingsIntent {
     data class NotesViewSelected(val view: NotesView) : SettingsIntent
     data object NotesViewSheetDismissed : SettingsIntent
     data object AutoSaveToggled : SettingsIntent
+    data object ExportRowClicked : SettingsIntent
+
+    /** Exportar notas terminó y se volvió a Ajustes: hay que avisar del resultado. */
+    data class ExportFinished(val exportedCount: Int, val missingImageCount: Int) : SettingsIntent
 }
