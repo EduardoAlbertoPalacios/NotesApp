@@ -34,7 +34,7 @@ El botón de ajustes de Mis notas se ve, pero no lleva a ninguna parte. Además,
 - **RF-8:** EL SISTEMA mostrará al final de la pantalla el nombre de la app y su versión instalada.
 
 ### Opciones deshabilitadas
-- **RF-9:** EL SISTEMA mostrará atenuadas las filas Exportar notas, Papelera y Ayuda y comentarios (la fila Color predeterminado funciona desde la spec 007, la fila Vista de notas desde la spec 008 y la fila Guardado automático desde la spec 009).
+- **RF-9:** EL SISTEMA mostrará atenuadas las filas Papelera y Ayuda y comentarios (la fila Color predeterminado funciona desde la spec 007, la fila Vista de notas desde la spec 008, la fila Guardado automático desde la spec 009 y la fila Exportar notas desde la spec 011).
 - **RF-10:** CUANDO el usuario toque una fila atenuada, EL SISTEMA no realizará ninguna acción.
 - **RF-11:** EL SISTEMA mostrará en la fila Color predeterminado el nombre del color vigente (sustituido por la spec 007, RF-3).
 - **RF-12:** EL SISTEMA mostrará en la fila Vista de notas el nombre de la vista vigente (sustituido por la spec 008, RF-8).
@@ -98,7 +98,7 @@ El botón de ajustes de Mis notas se ve, pero no lleva a ninguna parte. Además,
 
 ## Fuera de alcance
 
-- Hacer funcionar Exportar notas, Papelera y Ayuda y comentarios; cada una necesitará su propia spec.
+- Hacer funcionar Papelera y Ayuda y comentarios; cada una necesitará su propia spec. Exportar notas lo cubre la spec 011.
 - Una opción para seguir el modo claro u oscuro del teléfono.
 - Colores dinámicos del sistema y temas distintos de Claro y Oscuro.
 - Cambiar los colores de las notas o agregar colores nuevos.

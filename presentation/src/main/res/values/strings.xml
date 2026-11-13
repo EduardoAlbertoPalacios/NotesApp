@@ -121,4 +121,26 @@
     <string name="settings_help">Ayuda y comentarios</string>
     <string name="settings_help_detail">Nos encanta escucharte</string>
     <string name="settings_version">Notas · Versión %1$s</string>
+    <!-- Exportar notas (spec 011) -->
+    <string name="export_title">Exportar notas</string>
+    <string name="export_back">Volver</string>
+    <plurals name="export_selected_count">
+        <item quantity="one">%d seleccionada</item>
+        <item quantity="many">%d seleccionadas</item>
+        <item quantity="other">%d seleccionadas</item>
+    </plurals>
+    <string name="export_select_all">Seleccionar todas</string>
+    <string name="export_clear_selection">Quitar selección</string>
+    <string name="export_action">Exportar</string>
+    <string name="export_in_progress">Exportando notas</string>
+    <string name="export_untitled">Sin título</string>
+    <string name="export_empty">No hay notas para exportar</string>
+    <string name="export_load_error">No se pudieron cargar las notas</string>
+    <plurals name="export_done">
+        <item quantity="one">%d nota exportada</item>
+        <item quantity="many">%d notas exportadas</item>
+        <item quantity="other">%d notas exportadas</item>
+    </plurals>
+    <string name="export_error">No se pudieron exportar las notas</string>
+    <string name="export_missing_images">Algunas imágenes no se pudieron incluir</string>
 </resources>

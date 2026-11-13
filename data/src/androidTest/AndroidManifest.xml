@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Destino de documentos de prueba para PdfNotesExporterTest: deja simular el documento que crea el
+             selector del sistema, sus fallos de escritura y comprobar que se borra (RF-23). -->
+        <provider
+            android:name="com.example.notesapp.data.export.TestDocumentsProvider"
+            android:authorities="com.example.notesapp.data.test.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+    </application>
+
+</manifest>

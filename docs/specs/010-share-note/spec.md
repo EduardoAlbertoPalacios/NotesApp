@@ -87,7 +87,7 @@ Las notas solo se pueden leer dentro de la app. Para mandar una lista de la comp
 - Elegir qué partes compartir, como solo el texto o solo algunas imágenes.
 - Recibir notas o texto compartidos desde otras apps.
 - Enlaces para compartir o colaboración en tiempo real.
-- Exportar todas las notas (la fila «Exportar notas» de Ajustes necesita su propia spec).
+- Exportar varias notas: lo cubre la spec 011 («Exportar notas» en Ajustes).
 - Recordar a qué apps se compartió una nota.
 
 ## Criterios de finalización

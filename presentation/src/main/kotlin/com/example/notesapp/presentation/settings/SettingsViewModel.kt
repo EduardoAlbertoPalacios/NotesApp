@@ -74,6 +74,12 @@ class SettingsViewModel @Inject constructor(
             SettingsIntent.NotesViewSheetDismissed -> _state.update { it.copy(isNotesViewSheetVisible = false) }
             is SettingsIntent.NotesViewSelected -> selectNotesView(intent.view)
             SettingsIntent.AutoSaveToggled -> toggleAutoSave()
+            SettingsIntent.ExportRowClicked -> send(SettingsEffect.NavigateToExport)
+            is SettingsIntent.ExportFinished -> {
+                // RF-20, RF-45: un aviso tras otro; la cola de avisos los muestra en orden.
+                send(SettingsEffect.ShowExportDone(intent.exportedCount))
+                if (intent.missingImageCount > 0) send(SettingsEffect.ShowExportMissingImages)
+            }
         }
     }
 

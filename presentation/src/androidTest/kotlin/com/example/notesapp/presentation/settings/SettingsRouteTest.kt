@@ -50,7 +50,12 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
     @Volatile
     private var navigateBackCalls = 0
 
-    private fun setFailingSaveContent() {
+    @Volatile
+    private var exportResultShownCalls = 0
+
+    private fun setFailingSaveContent() = setRouteContent()
+
+    private fun setRouteContent(exportedCount: Int? = null, missingImageCount: Int = 0) {
         val repository = FailingSaveSettingsRepository(initialMode = activeMode)
         // En el hilo principal: así el ViewModel ya tiene el tema guardado antes del primer toque.
         val viewModel = composeRule.runOnUiThread {
@@ -70,6 +75,10 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
                 SettingsRoute(
                     appVersion = APP_VERSION,
                     onNavigateBack = { navigateBackCalls++ },
+                    onNavigateToExport = {},
+                    exportedCount = exportedCount,
+                    missingImageCount = missingImageCount,
+                    onExportResultShown = { exportResultShownCalls++ },
                     viewModel = viewModel,
                 )
             }
@@ -221,6 +230,79 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
         composeRule.onNodeWithText(string(R.string.settings_theme_save_error)).assertIsDisplayed()
     }
 
+    @Test
+    fun given_one_exported_note_when_displayed_then_shows_singular_export_done() {
+        setRouteContent(exportedCount = 1)
+
+        waitForText(exportDone(1))
+
+        composeRule.onNodeWithText(exportDone(1)).assertIsDisplayed()
+    }
+
+    @Test
+    fun given_three_exported_notes_when_displayed_then_shows_plural_export_done() {
+        setRouteContent(exportedCount = 3)
+
+        waitForText(exportDone(3))
+
+        composeRule.onNodeWithText(exportDone(3)).assertIsDisplayed()
+    }
+
+    @Test
+    fun given_missing_images_when_displayed_then_shows_missing_images_after_export_done() {
+        setRouteContent(exportedCount = 2, missingImageCount = 2)
+
+        waitForText(exportDone(2))
+        composeRule.onNodeWithText(string(R.string.export_missing_images)).assertDoesNotExist()
+        waitForText(string(R.string.export_missing_images), timeoutMillis = SNACKBAR_QUEUE_TIMEOUT_MS)
+
+        composeRule.onNodeWithText(string(R.string.export_missing_images)).assertIsDisplayed()
+        composeRule.onNodeWithText(exportDone(2)).assertDoesNotExist()
+    }
+
+    @Test
+    fun given_no_missing_images_when_export_done_dismissed_then_missing_images_never_shows() {
+        setRouteContent(exportedCount = 2, missingImageCount = 0)
+        waitForText(exportDone(2))
+
+        composeRule.waitUntil(timeoutMillis = SNACKBAR_QUEUE_TIMEOUT_MS) {
+            composeRule.onAllNodesWithText(exportDone(2)).fetchSemanticsNodes().isEmpty()
+        }
+
+        composeRule.onNodeWithText(string(R.string.export_missing_images)).assertDoesNotExist()
+    }
+
+    @Test
+    fun given_export_result_when_displayed_then_reports_it_shown_exactly_once() {
+        setRouteContent(exportedCount = 1, missingImageCount = 2)
+
+        waitForText(string(R.string.export_missing_images), timeoutMillis = SNACKBAR_QUEUE_TIMEOUT_MS)
+        composeRule.waitForIdle()
+
+        assertEquals(1, exportResultShownCalls)
+    }
+
+    @Test
+    fun given_no_export_result_when_displayed_then_shows_no_export_notice() {
+        setRouteContent(exportedCount = null, missingImageCount = 2)
+
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText(exportDone(1)).assertDoesNotExist()
+        composeRule.onNodeWithText(string(R.string.export_missing_images)).assertDoesNotExist()
+        assertEquals(0, exportResultShownCalls)
+    }
+
+    private fun waitForText(text: String, timeoutMillis: Long = TIMEOUT_MS) {
+        composeRule.waitUntil(timeoutMillis = timeoutMillis) {
+            composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun exportDone(count: Int): String =
+        InstrumentationRegistry.getInstrumentation().targetContext.resources
+            .getQuantityString(R.plurals.export_done, count, count)
+
     private fun row(tag: String): SemanticsNodeInteraction = composeRule.onNodeWithTag(tag)
 
     private fun string(id: Int): String = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
@@ -232,6 +314,9 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
 
         private const val APP_VERSION = "9.8.7-test"
         private const val TIMEOUT_MS = 5_000L
+
+        /** Un aviso corto dura 4 s: el siguiente de la cola aparece después. */
+        private const val SNACKBAR_QUEUE_TIMEOUT_MS = 10_000L
     }
 }
 

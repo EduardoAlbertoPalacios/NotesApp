@@ -112,6 +112,49 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `given settings when export row clicked then emits navigate to export without changing state`() = runTest {
+        val viewModel = createViewModelWithTheme(ThemeMode.DARK)
+        val stateBefore = viewModel.state.value
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.ExportRowClicked)
+
+            assertEquals(SettingsEffect.NavigateToExport, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(stateBefore, viewModel.state.value)
+    }
+
+    @Test
+    fun `given export finished without missing images when received then emits only export done without changing state`() = runTest {
+        val viewModel = createViewModelWithTheme(ThemeMode.DARK)
+        val stateBefore = viewModel.state.value
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.ExportFinished(exportedCount = 3, missingImageCount = 0))
+
+            assertEquals(SettingsEffect.ShowExportDone(3), awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(stateBefore, viewModel.state.value)
+    }
+
+    @Test
+    fun `given export finished with missing images when received then emits export done then missing images without changing state`() = runTest {
+        val viewModel = createViewModelWithTheme(ThemeMode.DARK)
+        val stateBefore = viewModel.state.value
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.ExportFinished(exportedCount = 1, missingImageCount = 2))
+
+            assertEquals(SettingsEffect.ShowExportDone(1), awaitItem())
+            assertEquals(SettingsEffect.ShowExportMissingImages, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(stateBefore, viewModel.state.value)
+    }
+
+    @Test
     fun `given closed sheet when theme row clicked then opens sheet without changing theme`() = runTest {
         val viewModel = createViewModelWithTheme(ThemeMode.LIGHT)
 
