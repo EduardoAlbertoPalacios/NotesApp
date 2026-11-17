@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.data.di.createSettingsDataStore
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import com.example.notesapp.domain.settings.ThemeMode
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -112,6 +113,55 @@ class SettingsDataStoreTest {
             }
             repository.observeAutoSaveEnabled().test {
                 assertEquals(false, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun given_saved_retention_when_reopening_the_file_then_reads_the_same_retention() = runTest {
+        val result = withRepository { it.setTrashRetention(TrashRetention.DAYS_90) }
+
+        assertEquals(AppResult.Success(Unit), result)
+        withRepository { repository ->
+            repository.observeTrashRetention().test {
+                assertEquals(TrashRetention.DAYS_90, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun given_empty_file_when_observing_retention_then_emits_null() = runTest {
+        withRepository { repository ->
+            repository.observeTrashRetention().test {
+                assertEquals(null, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun given_file_with_invalid_bytes_when_observing_retention_then_emits_null() = runTest {
+        writeInvalidBytes()
+
+        withRepository { repository ->
+            repository.observeTrashRetention().test {
+                assertEquals(null, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun given_saved_theme_and_retention_when_reopening_the_file_then_reads_both() = runTest {
+        withRepository { repository ->
+            repository.setThemeMode(ThemeMode.DARK)
+            repository.setTrashRetention(TrashRetention.NEVER)
+        }
+
+        withRepository { repository ->
+            repository.observeThemeMode().test {
+                assertEquals(ThemeMode.DARK, awaitItem())
+            }
+            repository.observeTrashRetention().test {
+                assertEquals(TrashRetention.NEVER, awaitItem())
             }
         }
     }

@@ -3,14 +3,14 @@
 Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo que ya no aporte.
 
 ## Estado actual
-- Existen los 5 módulos (`:app`, `:presentation`, `:domain`, `:data`, `:common`) con Hilt, Room (v6, esquemas en `data/schemas`) y Navigation Compose. Constitución en `docs/constitution.md`; specs en `docs/specs/NNN-nombre/`.
+- Existen los 5 módulos (`:app`, `:presentation`, `:domain`, `:data`, `:common`) con Hilt, Room (v7, esquemas en `data/schemas`) y Navigation Compose. Constitución en `docs/constitution.md`; specs en `docs/specs/NNN-nombre/`.
 - Pantalla **Mis notas** (`presentation/notes/list`) implementada desde Figma (`JyeMmyDAEO1Y52QnwKwgGH`, nodo `4:1583`).
 - **Editor** (`presentation/notes/editor`, Figma `4:1656`): crear, editar, fijar y eliminar; contenido con negrita, subrayado y tachado.
 - **Categorías** Trabajo / Personal: se eligen en el editor (sección "Categoría", Figma `14:4`) y filtran el listado.
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
-- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005), color predeterminado (007, PR #8), vista de notas (008, PR #9) y guardado automático activable (009, PR #10) y compartir nota (010, PR #11). Funcionan 5 filas de Ajustes; Papelera y Ayuda siguen atenuadas.
+- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005), color predeterminado (007, PR #8), vista de notas (008, PR #9) y guardado automático activable (009, PR #10) y compartir nota (010, PR #11) y exportar notas (011, PR #12). Solo Ayuda sigue atenuada en Ajustes.
 - **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
-- **Exportar notas** (spec 011): implementado en `feat/export-notes`, PR pendiente. Ajustes → pantalla de selección → .zip con un PDF A4 por nota, guardado con el selector del sistema.
+- **Papelera** (spec 012): implementada en `feat/trash`, PR pendiente. Eliminar mueve a la papelera con «Deshacer»; Ajustes → Papelera: restaurar, eliminar definitivamente, vaciar y plazo 7/30/90 días o Nunca (30 por defecto).
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
@@ -29,6 +29,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Color predeterminado: en `SettingsRepository` (DataStore), `NoteColor.DEFAULT` = Cielo. Hoja común `NoteColorPickerSheet` para editor y Ajustes. La nota nueva usa `isLoading` hasta leer el color, para no mostrar otro un instante. `NoteMappers` y las notas semilla siguen en `AQUA` a propósito.
 - Vista de notas: en `SettingsRepository`; `NotesView.DEFAULT` = Cuadrícula. Mis notas usa un solo `LazyVerticalStaggeredGrid` con 1 o 2 columnas. `isLoading` no termina hasta tener notas y vista. Tareas seguidas: `buildCardContent(flowTasks)` marca con `TASK_BREAK` y `wrapTasks` decide los cortes midiendo.
 - Guardado automático: ajuste en `SettingsRepository` (encendido por defecto). El editor elige modo al abrir. Manual: nada toca la base hasta Guardar; imágenes nuevas se copian ya pero se asocian al guardar (`NoteDao.saveChanges`, una transacción); borrador en `SavedStateHandle` (sobrevive a la muerte del proceso, no al cierre desde recientes; 100 000 caracteres ≈ 210 KB). `CleanUpImageFilesUseCase` al salir del editor compara por nombre de archivo, nunca por ruta.
+- Papelera: columna nula `trashed_at` (v7, `AutoMigration(6,7)`); el guardado usa la entidad parcial `NoteContentUpdate` para no tocarla (D1). Días en bloques de 24 h (`TrashRules`). Las vencidas se ocultan en `GetTrashUseCase` y se borran al arrancar (`AppStartupViewModel` en `MainActivity`, D4). `deleteAllByIds` borra en bloques de 900 por el límite de 999 parámetros de SQLite antiguo. Acortar el plazo pide confirmar si borra notas (`ChangeTrashRetentionUseCase`). `SettingsOptionSheet` y `ConfirmDialog` viven en `presentation/common`.
 - Formato: el contenido sigue en texto plano y el formato va aparte como tramos `FormatSpan` en la columna `content_spans` (codificación propia `start,end,F;…`, sin dependencias). Reglas en `NoteFormatting` (`:domain`); el editor pinta con `VisualTransformation`. Los formatos activados sin escribir no se guardan ni cambian la fecha.
 
 ## Aprendizajes y errores a evitar

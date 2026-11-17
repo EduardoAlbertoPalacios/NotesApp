@@ -119,7 +119,7 @@ Las notas solo se pueden leer dentro de la app. La spec 010 permite enviar una n
 - Elegir el tamaño de página, o usar Carta u otro tamaño según la región.
 - Exportaciones programadas o automáticas.
 - Continuar la exportación en segundo plano después de cerrar la app.
-- Papelera y Ayuda y comentarios, que siguen atenuadas.
+- Papelera y Ayuda y comentarios, que siguen atenuadas (Papelera funciona desde la spec 012).
 
 ## Criterios de finalización
 

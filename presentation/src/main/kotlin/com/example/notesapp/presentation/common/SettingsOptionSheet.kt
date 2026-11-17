@@ -1,4 +1,4 @@
-package com.example.notesapp.presentation.settings
+package com.example.notesapp.presentation.common
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -27,14 +27,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.R
-import com.example.notesapp.presentation.common.SheetHandle
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
 import kotlinx.coroutines.launch
 
-/** Hoja de opciones de Ajustes: la opción se aplica al tocarla y la hoja se cierra después con su animación. */
+/** Hoja de opciones (Ajustes y plazo de la papelera): la opción se aplica al tocarla y la hoja se cierra después con su animación. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun <T> SettingsOptionSheet(
@@ -142,7 +140,10 @@ private fun SettingsOption(
     }
 }
 
-// La hoja modal no se dibuja en las previews estáticas: se previsualiza su contenido.
+// La hoja modal no se dibuja en las previews estáticas: se previsualiza su contenido. Las opciones son textos
+// sueltos para que `common` no dependa de `settings`.
+private val PreviewOptions = listOf(R.string.settings_theme_light, R.string.settings_theme_dark)
+
 @Preview(widthDp = 412)
 @Composable
 private fun SettingsOptionSheetContentDarkPreview() {
@@ -151,10 +152,10 @@ private fun SettingsOptionSheetContentDarkPreview() {
             SheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
             SettingsOptionSheetContent(
                 titleRes = R.string.settings_theme,
-                options = ThemeMode.entries,
-                selected = ThemeMode.DARK,
-                optionLabelRes = { it.labelRes() },
-                optionTestTag = { it.name },
+                options = PreviewOptions,
+                selected = PreviewOptions.last(),
+                optionLabelRes = { it },
+                optionTestTag = { it.toString() },
                 onSelected = {},
             )
         }
@@ -169,10 +170,10 @@ private fun SettingsOptionSheetContentLightPreview() {
             SheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
             SettingsOptionSheetContent(
                 titleRes = R.string.settings_theme,
-                options = ThemeMode.entries,
-                selected = ThemeMode.LIGHT,
-                optionLabelRes = { it.labelRes() },
-                optionTestTag = { it.name },
+                options = PreviewOptions,
+                selected = PreviewOptions.first(),
+                optionLabelRes = { it },
+                optionTestTag = { it.toString() },
                 onSelected = {},
             )
         }

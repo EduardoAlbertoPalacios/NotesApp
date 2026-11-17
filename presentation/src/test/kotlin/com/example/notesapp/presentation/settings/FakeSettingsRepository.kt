@@ -2,6 +2,7 @@ package com.example.notesapp.presentation.settings
 
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.SettingsRepository
@@ -24,6 +25,9 @@ class FakeSettingsRepository : SettingsRepository {
     private val autoSaveEnabled = MutableSharedFlow<Boolean?>(replay = 1)
     val savedAutoSaveEnabled = mutableListOf<Boolean>()
     var autoSaveSaveResult: AppResult<Unit, SettingsError> = AppResult.Success(Unit)
+    private val trashRetention = MutableSharedFlow<TrashRetention?>(replay = 1)
+    val savedTrashRetentions = mutableListOf<TrashRetention>()
+    var trashRetentionSaveResult: AppResult<Unit, SettingsError> = AppResult.Success(Unit)
 
     suspend fun emitStored(mode: ThemeMode?) = themeMode.emit(mode)
 
@@ -32,6 +36,8 @@ class FakeSettingsRepository : SettingsRepository {
     suspend fun emitStoredNotesView(view: NotesView?) = notesView.emit(view)
 
     suspend fun emitStoredAutoSaveEnabled(enabled: Boolean?) = autoSaveEnabled.emit(enabled)
+
+    suspend fun emitStoredTrashRetention(retention: TrashRetention?) = trashRetention.emit(retention)
 
     override fun observeThemeMode(): Flow<ThemeMode?> = themeMode
 
@@ -63,5 +69,15 @@ class FakeSettingsRepository : SettingsRepository {
         savedAutoSaveEnabled += enabled
         autoSaveEnabled.emit(enabled)
         return autoSaveSaveResult
+    }
+
+    override fun observeTrashRetention(): Flow<TrashRetention?> = trashRetention
+
+    /** A diferencia de los demás ajustes, si falla el plazo observado no cambia. */
+    override suspend fun setTrashRetention(retention: TrashRetention): AppResult<Unit, SettingsError> {
+        savedTrashRetentions += retention
+        val result = trashRetentionSaveResult
+        if (result is AppResult.Success) trashRetention.emit(retention)
+        return result
     }
 }

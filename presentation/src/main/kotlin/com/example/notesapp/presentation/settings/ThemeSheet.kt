@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.common.SettingsOptionSheet
 
 /** Selector de tema: conecta la hoja de opciones con los intents de Ajustes. */
 @Composable

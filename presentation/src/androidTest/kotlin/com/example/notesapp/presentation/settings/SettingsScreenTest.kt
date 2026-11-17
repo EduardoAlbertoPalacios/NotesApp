@@ -112,6 +112,7 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
                             SettingsIntent.NotesViewSheetDismissed -> state.copy(isNotesViewSheetVisible = false)
                             SettingsIntent.AutoSaveToggled -> state.copy(isAutoSaveEnabled = !state.isAutoSaveEnabled)
                             SettingsIntent.ExportRowClicked -> state
+                            SettingsIntent.TrashRowClicked -> state
                             is SettingsIntent.ExportFinished -> state
                         }
                     },
@@ -199,14 +200,72 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
     }
 
     @Test
-    fun given_trash_row_when_displayed_then_only_describes_coming_soon_without_value() {
-        setContent()
+    fun given_trash_row_when_displayed_then_is_enabled_button_with_title() {
+        setContent(SettingsUiState(themeMode = activeMode, trashCount = 3))
 
-        row(SettingsTestTags.TRASH_ROW).assertContentDescriptionEquals(
-            listOf(string(R.string.settings_trash), string(R.string.settings_coming_soon)).joinToString(),
-        )
+        row(SettingsTestTags.TRASH_ROW)
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assert(hasRole(Role.Button))
+            .assert(hasText(string(R.string.settings_trash)))
+            .assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            .assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription))
+    }
+
+    @Test
+    fun given_three_notes_in_trash_when_displayed_then_trash_row_shows_plural_count() {
+        setContent(SettingsUiState(themeMode = activeMode, trashCount = 3))
+
+        row(SettingsTestTags.TRASH_ROW).assert(hasText(trashCount(3)))
+        assertEquals("3 notas", trashCount(3))
+    }
+
+    @Test
+    fun given_one_note_in_trash_when_displayed_then_trash_row_shows_singular_count() {
+        setContent(SettingsUiState(themeMode = activeMode, trashCount = 1))
+
+        row(SettingsTestTags.TRASH_ROW).assert(hasText(trashCount(1)))
+        assertEquals("1 nota", trashCount(1))
+    }
+
+    @Test
+    fun given_empty_trash_when_displayed_then_trash_row_shows_empty() {
+        setContent(SettingsUiState(themeMode = activeMode, trashCount = 0))
+
+        row(SettingsTestTags.TRASH_ROW)
+            .assert(hasText(string(R.string.settings_trash_empty)))
+            .assert(hasNoText(trashCount(0)))
+    }
+
+    @Test
+    fun given_unknown_trash_count_when_displayed_then_trash_row_shows_no_description() {
+        setContent(SettingsUiState(themeMode = activeMode, trashCount = null))
+
+        row(SettingsTestTags.TRASH_ROW)
+            .assert(hasText(string(R.string.settings_trash)))
+            .assert(hasNoText(string(R.string.settings_trash_empty)))
+            .assert(hasNoText(trashCount(0)))
+            .assert(hasNoText(trashCount(1)))
         composeRule.onNodeWithText(DESIGN_TRASH_COUNT, substring = true).assertDoesNotExist()
         composeRule.onNodeWithText(DESIGN_TRASH_DETAIL, substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun given_trash_row_when_clicked_then_sends_trash_row_clicked() {
+        setContent(SettingsUiState(themeMode = activeMode, trashCount = 2))
+
+        row(SettingsTestTags.TRASH_ROW).performScrollTo().performClick()
+
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.TrashRowClicked), intents)
+    }
+
+    @Test
+    fun given_trash_row_when_displayed_then_touch_target_is_at_least_44_dp() {
+        setContent(SettingsUiState(themeMode = activeMode, trashCount = 2))
+
+        row(SettingsTestTags.TRASH_ROW).assertWidthIsAtLeast(MIN_TOUCH_TARGET).assertHeightIsAtLeast(MIN_TOUCH_TARGET)
     }
 
     @Test
@@ -378,7 +437,7 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
             R.string.settings_auto_save_error to "No se pudo guardar el guardado automático",
             R.string.settings_export to "Exportar notas",
             R.string.settings_trash to "Papelera",
-            R.string.settings_coming_soon to "Próximamente",
+            R.string.settings_trash_empty to "Vacía",
             R.string.settings_help to "Ayuda y comentarios",
             R.string.settings_theme_save_error to "No se pudo guardar el tema",
         )
@@ -1073,7 +1132,6 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
 
     private val disabledRowDescriptions
         get() = mapOf(
-            SettingsTestTags.TRASH_ROW to description(R.string.settings_trash, R.string.settings_coming_soon),
             SettingsTestTags.HELP_ROW to description(R.string.settings_help, R.string.settings_help_detail),
         )
 
@@ -1097,6 +1155,9 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
     private val inThemeSheet = hasAnyAncestor(hasTestTag(SettingsTestTags.THEME_SHEET))
 
     private fun hasNoText(text: String) = !hasText(text)
+
+    private fun trashCount(count: Int): String = InstrumentationRegistry.getInstrumentation().targetContext
+        .resources.getQuantityString(R.plurals.settings_trash_count, count, count)
 
     private fun string(id: Int): String = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
 

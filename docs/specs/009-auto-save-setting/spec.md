@@ -96,7 +96,7 @@ El editor guarda siempre solo: mientras se escribe y al salir de la nota. La fil
 - **Nota nueva solo con imágenes:** tiene cambios pendientes, así que al salir aparece el diálogo (RF-20, RF-27).
 - **Agregar imágenes y descartar:** la nota queda sin ellas (RF-24).
 - **Quitar una imagen y descartar:** la nota conserva la imagen (RF-24).
-- **Eliminar una nota con cambios sin guardar:** se elimina tras la confirmación de siempre, sin el diálogo de guardar.
+- **Eliminar una nota con cambios sin guardar:** desde la spec 012 se mueve a la papelera sin confirmación ni diálogo de guardar; va la última versión guardada y los cambios sin guardar se descartan (spec 012, RF-8).
 - **Girar la pantalla con el diálogo abierto:** el diálogo sigue abierto y los cambios siguen pendientes.
 - **Guardar dos veces seguidas sin cambios entre medias:** la segunda vez el botón ya está deshabilitado (RF-14).
 - **Vaciar el título y el contenido de una nota ya guardada:** no se guarda, igual que con el guardado automático. Al pulsar Guardar no pasa nada visible y los cambios siguen pendientes. Si se elige Guardar en el diálogo, el editor se cierra y la nota conserva su última versión guardada. Se revisará en la spec sobre notas vaciadas.

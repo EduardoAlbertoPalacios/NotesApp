@@ -15,12 +15,14 @@ import com.example.notesapp.presentation.notes.editor.NoteEditorRoute
 import com.example.notesapp.presentation.notes.editor.NoteEditorViewModel
 import com.example.notesapp.presentation.notes.export.ExportNotesRoute
 import com.example.notesapp.presentation.notes.list.NoteListRoute
+import com.example.notesapp.presentation.notes.trash.TrashRoute
 import com.example.notesapp.presentation.settings.SettingsRoute
 
 private object NotesDestinations {
     const val NOTE_LIST = "notes"
     const val SETTINGS = "settings"
     const val EXPORT_NOTES = "settings/export"
+    const val TRASH = "settings/trash"
     const val NOTE_EDITOR = "notes/editor?" +
         "${NoteEditorViewModel.NOTE_ID_ARG}={${NoteEditorViewModel.NOTE_ID_ARG}}&" +
         "${NoteEditorViewModel.CATEGORY_ARG}={${NoteEditorViewModel.CATEGORY_ARG}}"
@@ -39,12 +41,18 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
         startDestination = NotesDestinations.NOTE_LIST,
         modifier = modifier,
     ) {
-        composable(NotesDestinations.NOTE_LIST) {
+        composable(NotesDestinations.NOTE_LIST) { entry ->
+            // Nota que el editor acaba de mover a la papelera (spec 012, RF-3).
+            val results = entry.savedStateHandle
+            val movedToTrashNoteId by results.getStateFlow<Long?>(MOVED_TO_TRASH_NOTE_ID_KEY, null)
+                .collectAsStateWithLifecycle()
             NoteListRoute(
                 onNavigateToNote = { noteId, category ->
                     navController.navigate(NotesDestinations.noteEditor(noteId, category))
                 },
                 onNavigateToSettings = { navController.navigate(NotesDestinations.SETTINGS) },
+                movedToTrashNoteId = movedToTrashNoteId,
+                onMovedToTrashShown = { results[MOVED_TO_TRASH_NOTE_ID_KEY] = null },
             )
         }
         composable(
@@ -61,7 +69,13 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
                 },
             ),
         ) {
-            NoteEditorRoute(onNavigateBack = { navController.popBackStack() })
+            NoteEditorRoute(
+                onNavigateBack = { navController.popBackStack() },
+                onMovedToTrash = { noteId ->
+                    navController.previousBackStackEntry?.savedStateHandle?.set(MOVED_TO_TRASH_NOTE_ID_KEY, noteId)
+                    navController.popBackStack()
+                },
+            )
         }
         composable(NotesDestinations.SETTINGS) { entry ->
             // Resultado que deja Exportar notas al volver (RF-20, RF-45).
@@ -71,6 +85,7 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
                 appVersion = appVersion,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToExport = { navController.navigate(NotesDestinations.EXPORT_NOTES) },
+                onNavigateToTrash = { navController.navigate(NotesDestinations.TRASH) },
                 exportedCount = exportedCount,
                 missingImageCount = results[MISSING_IMAGE_COUNT_KEY] ?: 0,
                 onExportResultShown = {
@@ -91,8 +106,12 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
                 },
             )
         }
+        composable(NotesDestinations.TRASH) {
+            TrashRoute(onNavigateBack = { navController.popBackStack() })
+        }
     }
 }
 
+private const val MOVED_TO_TRASH_NOTE_ID_KEY = "trash_moved_note_id"
 private const val EXPORTED_COUNT_KEY = "export_exported_count"
 private const val MISSING_IMAGE_COUNT_KEY = "export_missing_image_count"

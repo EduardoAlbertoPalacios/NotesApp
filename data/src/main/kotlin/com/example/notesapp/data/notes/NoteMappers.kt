@@ -7,8 +7,16 @@ import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteImage
+import com.example.notesapp.domain.notes.trash.TrashedNote
 
 internal fun NoteWithImages.toDomain() = note.toDomain(images.map { it.toDomain() })
+
+/**
+ * Nota de la papelera, o `null` si la fila no está en ella: inventarle una fecha la daría por vencida y la purga
+ * la borraría.
+ */
+internal fun NoteWithImages.toTrashedNote(): TrashedNote? =
+    note.trashedAt?.let { TrashedNote(note = toDomain(), trashedAt = it) }
 
 internal fun NoteImageEntity.toDomain() = NoteImage(id = id, path = path)
 

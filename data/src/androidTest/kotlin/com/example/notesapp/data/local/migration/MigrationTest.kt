@@ -111,10 +111,11 @@ class MigrationTest {
         val version = database.openHelper.readableDatabase.version
         database.close()
 
-        assertEquals(6, version)
+        assertEquals(7, version)
         assertEquals("Ideas", note?.note?.title)
         assertEquals("", note?.note?.contentSpans)
         assertEquals("", note?.note?.contentTasks)
+        assertEquals(null, note?.note?.trashedAt)
         assertEquals(listOf("/a.jpg"), note?.images?.map { it.path })
     }
 
@@ -263,12 +264,93 @@ class MigrationTest {
         db.close()
     }
 
+    @Test
+    fun given_v6_database_with_notes_and_image_when_migrating_to_v7_then_keeps_them_outside_the_trash() {
+        helper.createDatabase(TEST_DB, 6).apply {
+            execSQL(INSERT_V6_TASKS_NOTE)
+            execSQL(INSERT_V6_PLAIN_NOTE)
+            execSQL(INSERT_V3_IMAGE)
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 7, true)
+
+        db.query(
+            "SELECT id, title, content, color, is_pinned, updated_at, category, content_spans, content_tasks, trashed_at " +
+                "FROM notes ORDER BY id",
+        ).use { cursor ->
+            assertEquals(2, cursor.count)
+            cursor.moveToNext()
+            assertEquals(1L, cursor.getLong(0))
+            assertEquals("Compra", cursor.getString(1))
+            assertEquals("Tomates\nPan", cursor.getString(2))
+            assertEquals("VANILLA", cursor.getString(3))
+            assertEquals(1, cursor.getInt(4))
+            assertEquals(42L, cursor.getLong(5))
+            assertEquals("PERSONAL", cursor.getString(6))
+            assertEquals("0,3,B", cursor.getString(7))
+            assertEquals("0,0;1,1", cursor.getString(8))
+            assertTrue(cursor.isNull(9))
+            cursor.moveToNext()
+            assertEquals(2L, cursor.getLong(0))
+            assertEquals("Ideas", cursor.getString(1))
+            assertEquals("Libreta", cursor.getString(2))
+            assertEquals("ROSE", cursor.getString(3))
+            assertEquals(0, cursor.getInt(4))
+            assertEquals(7L, cursor.getLong(5))
+            assertTrue(cursor.isNull(6))
+            assertEquals("", cursor.getString(7))
+            assertEquals("", cursor.getString(8))
+            assertTrue(cursor.isNull(9))
+        }
+        db.query("SELECT id, note_id, path FROM note_images").use { cursor ->
+            assertEquals(1, cursor.count)
+            cursor.moveToFirst()
+            assertEquals(1L, cursor.getLong(0))
+            assertEquals(1L, cursor.getLong(1))
+            assertEquals("/a.jpg", cursor.getString(2))
+        }
+        db.close()
+    }
+
+    @Test
+    fun given_v6_database_when_opened_with_room_then_notes_are_active_and_can_be_trashed() = runTest {
+        helper.createDatabase(TEST_DB, 6).apply {
+            execSQL(INSERT_V6_TASKS_NOTE)
+            execSQL(INSERT_V3_IMAGE)
+            close()
+        }
+
+        val database = Room.databaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            NotesDatabase::class.java,
+            TEST_DB,
+        ).addMigrations(*ALL_MIGRATIONS).build()
+        val dao = database.noteDao()
+        val before = dao.getById(1)
+        val trashedRows = dao.setTrashedAt(1, 500)
+        val after = dao.getById(1)
+        database.close()
+
+        assertEquals(null, before?.note?.trashedAt)
+        assertEquals(42L, before?.note?.updatedAt)
+        assertEquals(listOf("/a.jpg"), before?.images?.map { it.path })
+        assertEquals(1, trashedRows)
+        assertEquals(before?.note?.copy(trashedAt = 500), after?.note)
+    }
+
     private companion object {
         const val LEGACY_CONTENT = "☐  Tomates\n☑  Pan integral\nTexto normal ☐ en medio"
         const val INSERT_V5_PLAIN_NOTE =
             "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category, content_spans) " +
                 "VALUES (2, 'Ideas', 'Libreta de ideas', 'ROSE', 1, 7, NULL, '0,7,B')"
         const val TEST_DB = "migration-test.db"
+        const val INSERT_V6_TASKS_NOTE =
+            "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category, content_spans, content_tasks) " +
+                "VALUES (1, 'Compra', 'Tomates\nPan', 'VANILLA', 1, 42, 'PERSONAL', '0,3,B', '0,0;1,1')"
+        const val INSERT_V6_PLAIN_NOTE =
+            "INSERT INTO notes (id, title, content, color, is_pinned, updated_at, category, content_spans, content_tasks) " +
+                "VALUES (2, 'Ideas', 'Libreta', 'ROSE', 0, 7, NULL, '', '')"
         const val INSERT_V1_NOTE =
             "INSERT INTO notes (id, title, content, color, is_pinned, updated_at) " +
                 "VALUES (1, 'Ideas', 'Libreta', 'SAND', 1, 5)"

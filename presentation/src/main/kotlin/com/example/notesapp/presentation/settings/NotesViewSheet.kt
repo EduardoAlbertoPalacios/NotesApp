@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.common.SettingsOptionSheet
 import com.example.notesapp.presentation.notes.common.labelRes
 
 /** Selector de la vista de Mis notas: conecta la hoja de opciones con los intents de Ajustes. */

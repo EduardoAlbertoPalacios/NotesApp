@@ -7,4 +7,7 @@ sealed interface NoteListEffect {
     data class NavigateToNote(val id: Long?, val category: NoteCategory? = null) : NoteListEffect
     data object NavigateToSettings : NoteListEffect
     data object ShowNotesViewSaveError : NoteListEffect
+    /** Aviso «Nota movida a la papelera» con «Deshacer»; sustituye al aviso anterior. */
+    data class ShowMovedToTrash(val id: Long) : NoteListEffect
+    data object ShowRestoreError : NoteListEffect
 }

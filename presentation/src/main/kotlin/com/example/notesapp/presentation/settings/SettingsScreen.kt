@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -184,12 +185,7 @@ private fun SettingsContent(
             GroupDivider()
             ExportRow(onClick = { onIntent(SettingsIntent.ExportRowClicked) })
             GroupDivider()
-            DisabledRow(
-                iconRes = R.drawable.ic_trash,
-                titleRes = R.string.settings_trash,
-                detailRes = R.string.settings_coming_soon,
-                testTag = SettingsTestTags.TRASH_ROW,
-            )
+            TrashRow(trashCount = state.trashCount, onClick = { onIntent(SettingsIntent.TrashRowClicked) })
         }
         SettingsGroup(titleRes = R.string.settings_section_about) {
             DisabledRow(
@@ -288,7 +284,7 @@ private fun ThemeRow(mode: ThemeMode, onClick: () -> Unit, modifier: Modifier = 
     SettingsRow(
         iconRes = R.drawable.ic_moon,
         titleRes = R.string.settings_theme,
-        detailRes = R.string.settings_theme_detail,
+        detail = stringResource(R.string.settings_theme_detail),
         modifier = modifier
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(SettingsTestTags.THEME_ROW),
@@ -307,7 +303,7 @@ private fun DefaultColorRow(color: NoteColor, onClick: () -> Unit, modifier: Mod
     SettingsRow(
         iconRes = R.drawable.ic_palette,
         titleRes = R.string.settings_default_color,
-        detailRes = R.string.settings_default_color_detail,
+        detail = stringResource(R.string.settings_default_color_detail),
         modifier = modifier
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(SettingsTestTags.DEFAULT_COLOR_ROW),
@@ -326,7 +322,7 @@ private fun NotesViewRow(view: NotesView, onClick: () -> Unit, modifier: Modifie
     SettingsRow(
         iconRes = R.drawable.ic_grid,
         titleRes = R.string.settings_notes_view,
-        detailRes = R.string.settings_notes_view_detail,
+        detail = stringResource(R.string.settings_notes_view_detail),
         modifier = modifier
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(SettingsTestTags.NOTES_VIEW_ROW),
@@ -345,10 +341,30 @@ private fun ExportRow(onClick: () -> Unit, modifier: Modifier = Modifier) {
     SettingsRow(
         iconRes = R.drawable.ic_export,
         titleRes = R.string.settings_export,
-        detailRes = R.string.settings_export_detail,
+        detail = stringResource(R.string.settings_export_detail),
         modifier = modifier
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(SettingsTestTags.EXPORT_ROW),
+    ) {
+        Chevron()
+    }
+}
+
+/** Papelera (spec 012): «N notas» o «Vacía»; sin descripción si no se pudo leer la papelera (RF-10, RF-11). */
+@Composable
+private fun TrashRow(trashCount: Int?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val detail = when (trashCount) {
+        null -> ""
+        0 -> stringResource(R.string.settings_trash_empty)
+        else -> pluralStringResource(R.plurals.settings_trash_count, trashCount, trashCount)
+    }
+    SettingsRow(
+        iconRes = R.drawable.ic_trash,
+        titleRes = R.string.settings_trash,
+        detail = detail,
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(SettingsTestTags.TRASH_ROW),
     ) {
         Chevron()
     }
@@ -360,7 +376,7 @@ private fun AutoSaveRow(isEnabled: Boolean, onToggle: () -> Unit, modifier: Modi
     SettingsRow(
         iconRes = R.drawable.ic_save,
         titleRes = R.string.settings_auto_save,
-        detailRes = R.string.settings_auto_save_detail,
+        detail = stringResource(R.string.settings_auto_save_detail),
         modifier = modifier
             .toggleable(value = isEnabled, role = Role.Switch, onValueChange = { onToggle() })
             .testTag(SettingsTestTags.AUTO_SAVE_ROW),
@@ -386,7 +402,7 @@ private fun DisabledRow(
     SettingsRow(
         iconRes = iconRes,
         titleRes = titleRes,
-        detailRes = detailRes,
+        detail = stringResource(detailRes),
         modifier = modifier
             .alpha(DisabledAlpha)
             .clearAndSetSemantics {
@@ -410,7 +426,7 @@ private fun DisabledRow(
 private fun SettingsRow(
     @DrawableRes iconRes: Int,
     @StringRes titleRes: Int,
-    @StringRes detailRes: Int,
+    detail: String,
     modifier: Modifier = Modifier,
     trailing: @Composable RowScope.() -> Unit,
 ) {
@@ -439,7 +455,7 @@ private fun SettingsRow(
                 color = colors.onBackground,
             )
             Text(
-                text = stringResource(detailRes),
+                text = detail,
                 style = NotesTheme.typography.settingsRowDetail,
                 color = colors.onSurfaceVariant,
             )

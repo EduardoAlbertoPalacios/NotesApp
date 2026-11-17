@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.SettingsRepository
@@ -98,6 +99,22 @@ internal class SettingsRepositoryImpl @Inject constructor(
         }
     }
 
+    // A diferencia de los demás ajustes, el plazo no se recuerda en memoria si no se puede guardar: la spec 012
+    // pide mantener el anterior (RF-46), porque un plazo más corto borra notas.
+    override fun observeTrashRetention(): Flow<TrashRetention?> =
+        dataStore.data
+            .map { it[TRASH_RETENTION].toTrashRetentionOrNull() }
+            .catch { error -> if (error is IOException) emit(null) else throw error }
+            .distinctUntilChanged()
+
+    override suspend fun setTrashRetention(retention: TrashRetention): AppResult<Unit, SettingsError> =
+        try {
+            dataStore.edit { it[TRASH_RETENTION] = retention.toStorageValue() }
+            AppResult.Success(Unit)
+        } catch (_: IOException) {
+            AppResult.Error(SettingsError.Storage)
+        }
+
     private fun storedThemeMode(): Flow<ThemeMode?> =
         dataStore.data
             .map { it[THEME_MODE].toThemeModeOrNull() }
@@ -124,5 +141,6 @@ internal class SettingsRepositoryImpl @Inject constructor(
         val DEFAULT_NOTE_COLOR = stringPreferencesKey("default_note_color")
         val NOTES_VIEW = stringPreferencesKey("notes_view")
         val AUTO_SAVE_ENABLED = booleanPreferencesKey("auto_save_enabled")
+        val TRASH_RETENTION = stringPreferencesKey("trash_retention")
     }
 }

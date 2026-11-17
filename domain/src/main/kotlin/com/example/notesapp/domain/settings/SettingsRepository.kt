@@ -2,6 +2,7 @@ package com.example.notesapp.domain.settings
 
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import kotlinx.coroutines.flow.Flow
 
 interface SettingsRepository {
@@ -28,4 +29,10 @@ interface SettingsRepository {
 
     /** Si no se puede guardar, devuelve el error pero [observeAutoSaveEnabled] sigue emitiendo [enabled] durante la sesión. */
     suspend fun setAutoSaveEnabled(enabled: Boolean): AppResult<Unit, SettingsError>
+
+    /** Plazo de la papelera; `null` si no hay ninguno guardado o no se puede leer. */
+    fun observeTrashRetention(): Flow<TrashRetention?>
+
+    /** Si no se puede guardar, devuelve el error y [observeTrashRetention] mantiene el plazo anterior. */
+    suspend fun setTrashRetention(retention: TrashRetention): AppResult<Unit, SettingsError>
 }

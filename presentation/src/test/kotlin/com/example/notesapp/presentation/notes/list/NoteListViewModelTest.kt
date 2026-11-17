@@ -17,6 +17,8 @@ import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.domain.notes.TextFormat
+import com.example.notesapp.domain.notes.trash.RestoreFromTrashUseCase
+import com.example.notesapp.domain.notes.trash.TrashedNote
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SetNotesViewUseCase
@@ -31,6 +33,7 @@ import java.util.Locale
 import java.util.TimeZone
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -47,6 +50,8 @@ class NoteListViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val notes = MutableSharedFlow<AppResult<List<Note>, NoteError>>(replay = 1)
+    private val restoredIds = mutableListOf<Long>()
+    private var restoreResult: AppResult<Unit, NoteError> = AppResult.Success(Unit)
     private val repository = object : NoteRepository {
         override fun observeNotes(): Flow<AppResult<List<Note>, NoteError>> = notes
         override suspend fun getNote(id: Long): AppResult<Note, NoteError> = AppResult.Error(NoteError.NotFound)
@@ -61,6 +66,14 @@ class NoteListViewModelTest {
             removedImageIds: List<Long>,
         ): AppResult<Note, NoteError> = AppResult.Error(NoteError.Storage)
         override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> = AppResult.Error(NoteError.Storage)
+        override suspend fun moveToTrash(id: Long, trashedAt: Long): AppResult<Unit, NoteError> =
+            AppResult.Error(NoteError.Storage)
+        override suspend fun restoreFromTrash(id: Long): AppResult<Unit, NoteError> {
+            restoredIds += id
+            return restoreResult
+        }
+        override fun observeTrash(): Flow<AppResult<List<TrashedNote>, NoteError>> = emptyFlow()
+        override suspend fun deleteNotes(ids: List<Long>): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
     }
     private val now = 1_700_000_000_000L
     private val dateFormatter = NoteDateFormatter(
@@ -86,6 +99,7 @@ class NoteListViewModelTest {
         dateFormatter,
         GetNotesViewUseCase(settingsRepository),
         SetNotesViewUseCase(settingsRepository),
+        RestoreFromTrashUseCase(repository),
     )
 
     @Test
@@ -784,6 +798,41 @@ class NoteListViewModelTest {
             listOf(AnnotatedString.Range(SpanStyle(textDecoration = TextDecoration.LineThrough), 10, 13)),
             item.listContent.spanStyles,
         )
+    }
+
+    @Test
+    fun `given note moved to trash when intent received then shows moved to trash notice for it`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.NoteMovedToTrash(id = 7))
+
+            assertEquals(NoteListEffect.ShowMovedToTrash(7), awaitItem())
+        }
+    }
+
+    @Test
+    fun `given note moved to trash when undo clicked then restores that note without effects`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.UndoMoveToTrashClicked(id = 7))
+
+            assertEquals(listOf(7L), restoredIds)
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given restore fails when undo clicked then shows restore error`() = runTest {
+        restoreResult = AppResult.Error(NoteError.Storage)
+        val viewModel = createViewModel()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteListIntent.UndoMoveToTrashClicked(id = 7))
+
+            assertEquals(NoteListEffect.ShowRestoreError, awaitItem())
+        }
     }
 
     private val searchNotes

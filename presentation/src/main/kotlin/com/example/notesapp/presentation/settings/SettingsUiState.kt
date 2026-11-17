@@ -13,4 +13,6 @@ data class SettingsUiState(
     val notesView: NotesView = NotesView.DEFAULT,
     val isNotesViewSheetVisible: Boolean = false,
     val isAutoSaveEnabled: Boolean = true,
+    /** Notas en la papelera; nulo mientras carga o si no se pudo leer. */
+    val trashCount: Int? = null,
 )

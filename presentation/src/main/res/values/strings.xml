@@ -64,10 +64,6 @@
     <string name="note_color_apply">Aplicar color</string>
     <string name="note_color_close">Cerrar selector de color</string>
     <string name="note_editor_delete">Eliminar nota</string>
-    <string name="note_editor_delete_title">¿Eliminar esta nota?</string>
-    <string name="note_editor_delete_message">No podrás recuperarla.</string>
-    <string name="note_editor_delete_confirm">Eliminar</string>
-    <string name="note_editor_delete_cancel">Cancelar</string>
     <string name="note_editor_not_found">Esta nota ya no existe.</string>
     <string name="note_editor_load_error">No pudimos abrir la nota. Inténtalo de nuevo más tarde.</string>
     <string name="note_editor_save_error">No pudimos guardar los cambios. Inténtalo de nuevo.</string>
@@ -117,7 +113,6 @@
     <string name="settings_export">Exportar notas</string>
     <string name="settings_export_detail">Crea una copia de tus ideas</string>
     <string name="settings_trash">Papelera</string>
-    <string name="settings_coming_soon">Próximamente</string>
     <string name="settings_help">Ayuda y comentarios</string>
     <string name="settings_help_detail">Nos encanta escucharte</string>
     <string name="settings_version">Notas · Versión %1$s</string>
@@ -143,4 +138,64 @@
     </plurals>
     <string name="export_error">No se pudieron exportar las notas</string>
     <string name="export_missing_images">Algunas imágenes no se pudieron incluir</string>
+    <!-- Papelera (spec 012) -->
+    <string name="note_list_moved_to_trash">Nota movida a la papelera</string>
+    <string name="note_list_undo">Deshacer</string>
+    <string name="note_list_restore_error">No se pudo restaurar la nota</string>
+    <plurals name="settings_trash_count">
+        <item quantity="one">%d nota</item>
+        <item quantity="many">%d notas</item>
+        <item quantity="other">%d notas</item>
+    </plurals>
+    <string name="settings_trash_empty">Vacía</string>
+    <string name="trash_title">Papelera</string>
+    <string name="trash_back">Volver</string>
+    <plurals name="trash_count">
+        <item quantity="one">%d nota</item>
+        <item quantity="many">%d notas</item>
+        <item quantity="other">%d notas</item>
+    </plurals>
+    <string name="trash_empty_action">Vaciar papelera</string>
+    <string name="trash_empty">La papelera está vacía</string>
+    <string name="trash_load_error">No se pudo cargar la papelera</string>
+    <string name="trash_untitled">Sin título</string>
+    <plurals name="trash_days_left">
+        <item quantity="one">Se eliminará en %d día</item>
+        <item quantity="many">Se eliminará en %d días</item>
+        <item quantity="other">Se eliminará en %d días</item>
+    </plurals>
+    <string name="trash_days_left_tomorrow">Se eliminará mañana</string>
+    <string name="trash_days_left_today">Se eliminará hoy</string>
+    <string name="trash_note_actions">Ver acciones</string>
+    <string name="trash_restore">Restaurar</string>
+    <string name="trash_delete_forever">Eliminar definitivamente</string>
+    <string name="trash_restored">Nota restaurada</string>
+    <string name="trash_restore_error">No se pudo restaurar la nota</string>
+    <string name="trash_delete_error">No se pudo eliminar la nota</string>
+    <string name="trash_empty_error">No se pudo vaciar la papelera</string>
+    <string name="trash_cancel">Cancelar</string>
+    <string name="trash_delete_title">¿Eliminar definitivamente?</string>
+    <string name="trash_delete_message">No podrás recuperarla.</string>
+    <string name="trash_delete_confirm">Eliminar</string>
+    <string name="trash_empty_title">¿Vaciar la papelera?</string>
+    <plurals name="trash_empty_message">
+        <item quantity="one">Se eliminará definitivamente %d nota.</item>
+        <item quantity="many">Se eliminarán definitivamente %d notas.</item>
+        <item quantity="other">Se eliminarán definitivamente %d notas.</item>
+    </plurals>
+    <string name="trash_empty_confirm">Vaciar</string>
+    <string name="trash_retention">Vaciar automáticamente</string>
+    <string name="trash_retention_7_days">7 días</string>
+    <string name="trash_retention_30_days">30 días</string>
+    <string name="trash_retention_90_days">90 días</string>
+    <string name="trash_retention_never">Nunca</string>
+    <string name="trash_retention_confirm_title">¿Cambiar el plazo?</string>
+    <!-- %1$d: número de notas; %2$s: plazo («7 días»). -->
+    <plurals name="trash_retention_confirm_message">
+        <item quantity="one">%1$d nota lleva más de %2$s en la papelera y se eliminará definitivamente.</item>
+        <item quantity="many">%1$d notas llevan más de %2$s en la papelera y se eliminarán definitivamente.</item>
+        <item quantity="other">%1$d notas llevan más de %2$s en la papelera y se eliminarán definitivamente.</item>
+    </plurals>
+    <string name="trash_retention_confirm">Cambiar</string>
+    <string name="trash_retention_save_error">No se pudo guardar el plazo</string>
 </resources>

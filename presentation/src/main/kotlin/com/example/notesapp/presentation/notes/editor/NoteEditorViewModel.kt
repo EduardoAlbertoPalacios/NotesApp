@@ -31,6 +31,7 @@ import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.domain.notes.UndoEdit
 import com.example.notesapp.domain.notes.UndoHistory
 import com.example.notesapp.domain.notes.UndoSnapshot
+import com.example.notesapp.domain.notes.trash.MoveNoteToTrashUseCase
 import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.presentation.R
@@ -60,6 +61,7 @@ class NoteEditorViewModel @Inject constructor(
     private val saveNote: SaveNoteUseCase,
     private val restoreNote: RestoreNoteUseCase,
     private val deleteNote: DeleteNoteUseCase,
+    private val moveNoteToTrash: MoveNoteToTrashUseCase,
     private val addNoteImages: AddNoteImagesUseCase,
     private val removeNoteImage: RemoveNoteImageUseCase,
     private val dateFormatter: NoteDateFormatter,
@@ -148,9 +150,7 @@ class NoteEditorViewModel @Inject constructor(
             is NoteEditorIntent.PickerColorSelected -> _state.update { it.copy(pickerColor = intent.color) }
             NoteEditorIntent.ColorApplied -> applyColor()
             NoteEditorIntent.ColorPickerDismissed -> _state.update { it.copy(pickerColor = null) }
-            NoteEditorIntent.DeleteClicked -> _state.update { it.copy(isDeleteDialogVisible = true) }
-            NoteEditorIntent.DeleteDismissed -> _state.update { it.copy(isDeleteDialogVisible = false) }
-            NoteEditorIntent.DeleteConfirmed -> delete()
+            NoteEditorIntent.DeleteClicked -> moveToTrash()
             NoteEditorIntent.BackClicked -> leave()
             NoteEditorIntent.SaveClicked -> viewModelScope.launch { saveManually() }
             NoteEditorIntent.LeaveSaveClicked -> leaveSaving()
@@ -529,9 +529,9 @@ class NoteEditorViewModel @Inject constructor(
     }
 
     /** Cierra el editor tras borrar las copias de imágenes que ninguna nota usa (ver `CleanUpImageFilesUseCase`). */
-    private suspend fun finishSession() {
+    private suspend fun finishSession(effect: NoteEditorEffect = NoteEditorEffect.NavigateBack) {
         saveMutex.withLock { cleanUpImageFiles() }
-        send(NoteEditorEffect.NavigateBack)
+        send(effect)
     }
 
     /** El campo que el paso no cambió se queda como está; si su texto difiere, el cursor va al final. */
@@ -740,8 +740,11 @@ class NoteEditorViewModel @Inject constructor(
         }
     }
 
-    private fun delete() {
-        _state.update { it.copy(isDeleteDialogVisible = false) }
+    /**
+     * Mueve a la papelera la última versión guardada; los cambios sin guardar se descartan (spec 012, RF-1 a
+     * RF-8). Una nota que nunca se guardó no llega a la papelera: se descarta y se cierra sin aviso.
+     */
+    private fun moveToTrash() {
         autosaveJob?.cancel()
         hasPendingChanges = false
         viewModelScope.launch {
@@ -752,10 +755,10 @@ class NoteEditorViewModel @Inject constructor(
                 finishSession()
                 return@launch
             }
-            when (deleteNote(note.id)) {
+            when (moveNoteToTrash(note.id)) {
                 is AppResult.Success -> {
                     discardPendingChanges()
-                    finishSession()
+                    finishSession(NoteEditorEffect.MovedToTrash(note.id))
                 }
                 is AppResult.Error -> send(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error))
             }

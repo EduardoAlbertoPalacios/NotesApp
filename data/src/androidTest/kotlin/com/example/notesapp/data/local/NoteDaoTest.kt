@@ -371,6 +371,181 @@ class NoteDaoTest {
         assertEquals(listOf("/b.jpg"), dao.getImagePaths())
     }
 
+    @Test
+    fun given_active_and_trashed_notes_when_observing_all_then_emits_only_active_ones() = runTest {
+        dao.insert(noteEntity(title = "Activa"))
+        dao.insert(noteEntity(title = "En papelera").copy(trashedAt = 500))
+
+        dao.observeAll().test {
+            assertEquals(listOf("Activa"), awaitItem().map { it.note.title })
+        }
+    }
+
+    @Test
+    fun given_active_and_trashed_notes_when_observing_trashed_then_emits_only_trashed_ones_with_images() = runTest {
+        dao.insert(noteEntity(title = "Activa"))
+        val trashed = dao.insert(noteEntity(title = "En papelera").copy(trashedAt = 500))
+        dao.insertImages(listOf(image(trashed, "/a.jpg")))
+
+        dao.observeTrashed().test {
+            val emitted = awaitItem().single()
+            assertEquals(noteEntity(title = "En papelera").copy(id = trashed, trashedAt = 500), emitted.note)
+            assertEquals(listOf("/a.jpg"), emitted.images.map { it.path })
+        }
+    }
+
+    @Test
+    fun given_observed_active_notes_when_note_moved_to_trash_and_restored_then_emits_each_change() = runTest {
+        val id = dao.insert(noteEntity())
+
+        dao.observeAll().test {
+            assertEquals(listOf(id), awaitItem().map { it.note.id })
+
+            dao.setTrashedAt(id, 500)
+            assertTrue(awaitItem().isEmpty())
+
+            dao.setTrashedAt(id, null)
+            assertEquals(listOf(id), awaitItem().map { it.note.id })
+        }
+    }
+
+    @Test
+    fun given_observed_trash_when_note_moved_to_trash_and_restored_then_emits_each_change() = runTest {
+        val id = dao.insert(noteEntity())
+
+        dao.observeTrashed().test {
+            assertTrue(awaitItem().isEmpty())
+
+            dao.setTrashedAt(id, 500)
+            assertEquals(listOf(id), awaitItem().map { it.note.id })
+
+            dao.setTrashedAt(id, null)
+            assertTrue(awaitItem().isEmpty())
+        }
+    }
+
+    @Test
+    fun given_note_with_images_when_moved_to_trash_then_keeps_its_content_edit_time_and_images() = runTest {
+        val note = fullNoteEntity()
+        val id = dao.insert(note)
+        dao.insertImages(listOf(image(id, "/a.jpg"), image(id, "/b.jpg")))
+
+        val changed = dao.setTrashedAt(id, 500)
+
+        assertEquals(1, changed)
+        val stored = dao.getById(id)
+        assertEquals(note.copy(id = id, trashedAt = 500), stored?.note)
+        assertEquals(listOf("/a.jpg", "/b.jpg"), stored?.images?.map { it.path })
+    }
+
+    @Test
+    fun given_trashed_note_with_images_when_restored_then_is_exactly_as_before() = runTest {
+        val note = fullNoteEntity()
+        val id = dao.insert(note)
+        dao.insertImages(listOf(image(id, "/a.jpg")))
+        val before = dao.getById(id)
+        dao.setTrashedAt(id, 500)
+
+        val changed = dao.setTrashedAt(id, null)
+
+        assertEquals(1, changed)
+        assertEquals(before, dao.getById(id))
+    }
+
+    @Test
+    fun given_missing_note_when_setting_trashed_at_then_changes_nothing_and_returns_zero() = runTest {
+        val other = dao.insert(noteEntity(title = "Otra"))
+
+        assertEquals(0, dao.setTrashedAt(99, 500))
+        assertEquals(0, dao.setTrashedAt(99, null))
+        assertEquals(null, dao.getById(other)?.note?.trashedAt)
+    }
+
+    @Test
+    fun given_trashed_note_when_updated_then_stays_in_the_trash() = runTest {
+        val id = dao.insert(noteEntity())
+        dao.setTrashedAt(id, 500)
+
+        val changed = dao.update(noteEntity(title = "Editada").copy(id = id, updatedAt = 9))
+
+        assertEquals(1, changed)
+        assertEquals(noteEntity(title = "Editada").copy(id = id, updatedAt = 9, trashedAt = 500), dao.getById(id)?.note)
+    }
+
+    @Test
+    fun given_active_note_when_updated_with_a_trash_time_then_stays_out_of_the_trash() = runTest {
+        val id = dao.insert(noteEntity())
+
+        dao.update(noteEntity(title = "Editada").copy(id = id, trashedAt = 500))
+
+        assertEquals(noteEntity(title = "Editada").copy(id = id), dao.getById(id)?.note)
+    }
+
+    @Test
+    fun given_trashed_note_when_saving_changes_then_stays_in_the_trash() = runTest {
+        val id = dao.insert(noteEntity())
+        dao.setTrashedAt(id, 500)
+
+        val result = dao.saveChanges(noteEntity(title = "Editada").copy(id = id), listOf("/a.jpg"), emptyList())
+
+        assertEquals(500L, result?.note?.trashedAt)
+        dao.observeAll().test {
+            assertTrue(awaitItem().isEmpty())
+        }
+        dao.observeTrashed().test {
+            assertEquals(listOf("Editada"), awaitItem().map { it.note.title })
+        }
+    }
+
+    @Test
+    fun given_notes_with_images_when_deleting_by_ids_then_removes_them_and_their_images_only() = runTest {
+        val first = dao.insert(noteEntity(title = "Primera").copy(trashedAt = 500))
+        val second = dao.insert(noteEntity(title = "Segunda"))
+        val kept = dao.insert(noteEntity(title = "Conservar").copy(trashedAt = 600))
+        dao.insertImages(listOf(image(first, "/a.jpg"), image(second, "/b.jpg"), image(kept, "/c.jpg")))
+
+        dao.deleteByIds(listOf(first, second))
+
+        assertEquals(listOf("Conservar"), notesInTable())
+        assertEquals(listOf(kept to "/c.jpg"), imagesInTable())
+    }
+
+    @Test
+    fun given_missing_ids_when_deleting_by_ids_then_keeps_the_other_notes() = runTest {
+        dao.insert(noteEntity(title = "Conservar"))
+
+        dao.deleteByIds(listOf(98, 99))
+
+        assertEquals(listOf("Conservar"), notesInTable())
+    }
+
+    @Test
+    fun given_more_than_999_trashed_notes_when_deleting_all_by_ids_then_deletes_them_all_and_keeps_the_others() =
+        runTest {
+            dao.insertAll(List(TRASHED_COUNT) { noteEntity(title = "Papelera $it").copy(trashedAt = 500) })
+            val kept = dao.insert(noteEntity(title = "Conservar"))
+            dao.insertImages(listOf(image(kept, "/c.jpg")))
+
+            dao.observeTrashed().test {
+                val trashedIds = awaitItem().map { it.note.id }
+                assertEquals(TRASHED_COUNT, trashedIds.size)
+
+                dao.deleteAllByIds(trashedIds)
+
+                assertEquals(emptyList<NoteWithImages>(), awaitItem())
+            }
+            assertEquals(listOf("Conservar"), notesInTable())
+            assertEquals(listOf(kept to "/c.jpg"), imagesInTable())
+        }
+
+    @Test
+    fun given_trashed_note_with_images_when_getting_image_paths_then_includes_them() = runTest {
+        val id = dao.insert(noteEntity().copy(trashedAt = 500))
+        dao.insertImages(listOf(image(id, "/a.jpg")))
+
+        assertEquals(listOf("/a.jpg"), dao.getImagePaths())
+    }
+
     /** Hace fallar dentro de la base la inserción de una imagen con [path], sin cambiar el esquema. */
     private fun failInsertsOfPath(path: String) {
         database.openHelper.writableDatabase.execSQL(
@@ -397,5 +572,21 @@ class NoteDaoTest {
     private fun noteEntity(title: String = "Ideas") =
         NoteEntity(title = title, content = "", color = "AQUA", isPinned = false, updatedAt = 1)
 
+    private fun fullNoteEntity() = NoteEntity(
+        title = "Compra",
+        content = "Tomates\nLeche",
+        color = "MINT",
+        isPinned = true,
+        updatedAt = 42,
+        category = "PERSONAL",
+        contentSpans = "0,3,B",
+        contentTasks = "0,1;1,0",
+    )
+
     private fun image(noteId: Long, path: String) = NoteImageEntity(noteId = noteId, path = path)
+
+    private companion object {
+        /** Más que el límite de 999 parámetros por sentencia de SQLite antiguo. */
+        const val TRASHED_COUNT = 1_500
+    }
 }

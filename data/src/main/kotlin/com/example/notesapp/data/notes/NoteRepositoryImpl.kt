@@ -8,6 +8,7 @@ import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
+import com.example.notesapp.domain.notes.trash.TrashedNote
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -69,6 +70,28 @@ internal class NoteRepositoryImpl @Inject constructor(
 
     override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> = storage {
         AppResult.Success(noteDao.getImagePaths().toSet())
+    }
+
+    override suspend fun moveToTrash(id: Long, trashedAt: Long): AppResult<Unit, NoteError> = storage {
+        if (noteDao.setTrashedAt(id, trashedAt) > 0) AppResult.Success(Unit) else AppResult.Error(NoteError.NotFound)
+    }
+
+    override suspend fun restoreFromTrash(id: Long): AppResult<Unit, NoteError> = storage {
+        if (noteDao.setTrashedAt(id, null) > 0) AppResult.Success(Unit) else AppResult.Error(NoteError.NotFound)
+    }
+
+    override fun observeTrash(): Flow<AppResult<List<TrashedNote>, NoteError>> =
+        noteDao.observeTrashed()
+            .map<_, AppResult<List<TrashedNote>, NoteError>> { entities ->
+                AppResult.Success(entities.mapNotNull { it.toTrashedNote() })
+            }
+            .catch { error ->
+                if (error is SQLException) emit(AppResult.Error(NoteError.Storage)) else throw error
+            }
+
+    override suspend fun deleteNotes(ids: List<Long>): AppResult<Unit, NoteError> = storage {
+        if (ids.isNotEmpty()) noteDao.deleteAllByIds(ids)
+        AppResult.Success(Unit)
     }
 
     private inline fun <T> storage(block: () -> AppResult<T, NoteError>): AppResult<T, NoteError> =

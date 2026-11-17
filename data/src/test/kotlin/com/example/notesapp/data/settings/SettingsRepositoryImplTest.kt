@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.ThemeMode
@@ -22,6 +23,7 @@ class SettingsRepositoryImplTest {
     private val defaultNoteColorKey = stringPreferencesKey("default_note_color")
     private val notesViewKey = stringPreferencesKey("notes_view")
     private val autoSaveKey = booleanPreferencesKey("auto_save_enabled")
+    private val retentionKey = stringPreferencesKey("trash_retention")
 
     private fun dataStore(storedValue: String? = null) = FakePreferencesDataStore(
         storedValue?.let { preferencesOf(themeModeKey to it) } ?: emptyPreferences(),
@@ -33,6 +35,10 @@ class SettingsRepositoryImplTest {
 
     private fun autoSaveDataStore(storedValue: Boolean? = null) = FakePreferencesDataStore(
         storedValue?.let { preferencesOf(autoSaveKey to it) } ?: emptyPreferences(),
+    )
+
+    private fun retentionDataStore(storedValue: String? = null) = FakePreferencesDataStore(
+        storedValue?.let { preferencesOf(retentionKey to it) } ?: emptyPreferences(),
     )
 
     private fun viewDataStore(storedValue: String? = null) = FakePreferencesDataStore(
@@ -756,7 +762,166 @@ class SettingsRepositoryImplTest {
         assertEquals(false, dataStore.preferences.value[autoSaveKey])
     }
 
+    @Test
+    fun `given no stored retention when observing then emits null`() = runTest {
+        val repository = SettingsRepositoryImpl(retentionDataStore())
+
+        repository.observeTrashRetention().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given each stored retention text when observing then emits its retention`() = runTest {
+        retentionsByStorageValue.forEach { (text, retention) ->
+            val repository = SettingsRepositoryImpl(retentionDataStore(storedValue = text))
+
+            repository.observeTrashRetention().test {
+                assertEquals(retention, awaitItem())
+            }
+        }
+    }
+
+    @Test
+    fun `given each retention when saving then stores its stable text`() = runTest {
+        retentionsByStorageValue.forEach { (text, retention) ->
+            val dataStore = retentionDataStore()
+
+            val result = SettingsRepositoryImpl(dataStore).setTrashRetention(retention)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(text, dataStore.preferences.value[retentionKey])
+        }
+    }
+
+    @Test
+    fun `given observed retention when saving then emits the new retention`() = runTest {
+        val dataStore = retentionDataStore(storedValue = "30_days")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeTrashRetention().test {
+            assertEquals(TrashRetention.DAYS_30, awaitItem())
+
+            val result = repository.setTrashRetention(TrashRetention.DAYS_7)
+
+            assertEquals(AppResult.Success(Unit), result)
+            assertEquals(TrashRetention.DAYS_7, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given saved retention when the app reopens then emits that retention`() = runTest {
+        val dataStore = retentionDataStore()
+        SettingsRepositoryImpl(dataStore).setTrashRetention(TrashRetention.NEVER)
+
+        val reopened = SettingsRepositoryImpl(dataStore)
+
+        reopened.observeTrashRetention().test {
+            assertEquals(TrashRetention.NEVER, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given unknown stored retention when observing then emits null`() = runTest {
+        val repository = SettingsRepositoryImpl(retentionDataStore(storedValue = "DAYS_7"))
+
+        repository.observeTrashRetention().test {
+            assertEquals(null, awaitItem())
+        }
+    }
+
+    @Test
+    fun `given io failure when reading retention then emits null`() = runTest {
+        val dataStore = retentionDataStore(storedValue = "7_days")
+        dataStore.readFailure = IOException("disk failure")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeTrashRetention().test {
+            assertEquals(null, awaitItem())
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `given unexpected failure when reading retention then propagates it`() = runTest {
+        val dataStore = retentionDataStore(storedValue = "7_days")
+        dataStore.readFailure = IllegalStateException("bug")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.observeTrashRetention().test {
+            assertTrue(awaitError() is IllegalStateException)
+        }
+    }
+
+    @Test
+    fun `given io failure when saving retention then returns storage error and keeps the previous retention`() =
+        runTest {
+            val dataStore = retentionDataStore(storedValue = "90_days")
+            dataStore.writeFailure = IOException("disk full")
+            val repository = SettingsRepositoryImpl(dataStore)
+
+            repository.observeTrashRetention().test {
+                assertEquals(TrashRetention.DAYS_90, awaitItem())
+
+                val result = repository.setTrashRetention(TrashRetention.DAYS_7)
+
+                assertEquals(AppResult.Error(SettingsError.Storage), result)
+                expectNoEvents()
+            }
+            repository.observeTrashRetention().test {
+                assertEquals(TrashRetention.DAYS_90, awaitItem())
+            }
+            assertEquals("90_days", dataStore.preferences.value[retentionKey])
+        }
+
+    @Test(expected = IllegalStateException::class)
+    fun `given unexpected failure when saving retention then propagates it`() = runTest {
+        val dataStore = retentionDataStore()
+        dataStore.writeFailure = IllegalStateException("bug")
+
+        SettingsRepositoryImpl(dataStore).setTrashRetention(TrashRetention.DAYS_7)
+    }
+
+    @Test
+    fun `given stored theme, color, view and auto save when saving retention then they are unchanged`() = runTest {
+        val dataStore = FakePreferencesDataStore(
+            preferencesOf(
+                themeModeKey to "light",
+                defaultNoteColorKey to "mint",
+                notesViewKey to "list",
+                autoSaveKey to false,
+            ),
+        )
+
+        SettingsRepositoryImpl(dataStore).setTrashRetention(TrashRetention.DAYS_90)
+
+        assertEquals("light", dataStore.preferences.value[themeModeKey])
+        assertEquals("mint", dataStore.preferences.value[defaultNoteColorKey])
+        assertEquals("list", dataStore.preferences.value[notesViewKey])
+        assertEquals(false, dataStore.preferences.value[autoSaveKey])
+    }
+
+    @Test
+    fun `given stored retention when saving the other settings then retention is unchanged`() = runTest {
+        val dataStore = retentionDataStore(storedValue = "7_days")
+        val repository = SettingsRepositoryImpl(dataStore)
+
+        repository.setThemeMode(ThemeMode.LIGHT)
+        repository.setDefaultNoteColor(NoteColor.MINT)
+        repository.setNotesView(NotesView.LIST)
+        repository.setAutoSaveEnabled(false)
+
+        assertEquals("7_days", dataStore.preferences.value[retentionKey])
+    }
+
     private companion object {
+        val retentionsByStorageValue = mapOf(
+            "7_days" to TrashRetention.DAYS_7,
+            "30_days" to TrashRetention.DAYS_30,
+            "90_days" to TrashRetention.DAYS_90,
+            "never" to TrashRetention.NEVER,
+        )
+
         val viewsByStorageValue = mapOf(
             "grid" to NotesView.GRID,
             "list" to NotesView.LIST,

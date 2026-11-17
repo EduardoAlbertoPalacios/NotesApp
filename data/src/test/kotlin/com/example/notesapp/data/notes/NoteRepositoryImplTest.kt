@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteException
 import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.data.local.NoteDao
 import com.example.notesapp.data.local.NoteEntity
 import com.example.notesapp.data.local.NoteImageEntity
 import com.example.notesapp.domain.notes.ChecklistItem
@@ -14,6 +15,7 @@ import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.TextFormat
+import com.example.notesapp.domain.notes.trash.TrashedNote
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -380,6 +382,202 @@ class NoteRepositoryImplTest {
 
         assertEquals(AppResult.Error(NoteError.Storage), repository.getImagePaths())
     }
+
+    @Test
+    fun `given stored note when moving to trash then marks it with the trash time and keeps the rest`() = runTest {
+        dao.insertAll(listOf(entity))
+        repository.addImages(1, listOf("/a.jpg"))
+
+        val result = repository.moveToTrash(1, trashedAt = 500)
+
+        assertEquals(AppResult.Success(Unit), result)
+        assertEquals(entity.copy(trashedAt = 500), dao.stored.single())
+        assertEquals(listOf("/a.jpg"), dao.storedImages.map { it.path })
+    }
+
+    @Test
+    fun `given missing note when moving to trash then returns not found`() = runTest {
+        assertEquals(AppResult.Error(NoteError.NotFound), repository.moveToTrash(42, trashedAt = 500))
+    }
+
+    @Test
+    fun `given observed notes when a note moves to trash then stops emitting it`() = runTest {
+        dao.insertAll(listOf(entity, entity.copy(title = "Otra")))
+
+        repository.observeNotes().test {
+            assertEquals(listOf("Para leer", "Otra"), awaitTitles())
+
+            repository.moveToTrash(1, trashedAt = 500)
+
+            assertEquals(listOf("Otra"), awaitTitles())
+        }
+    }
+
+    @Test
+    fun `given trashed note when restoring then takes it out of the trash with its edit time unchanged`() = runTest {
+        dao.insertAll(listOf(entity.copy(trashedAt = 500)))
+
+        val result = repository.restoreFromTrash(1)
+
+        assertEquals(AppResult.Success(Unit), result)
+        assertEquals(entity, dao.stored.single())
+        repository.observeNotes().test {
+            assertEquals(AppResult.Success(listOf(entity.toDomain())), awaitItem())
+        }
+    }
+
+    @Test
+    fun `given missing note when restoring then returns not found`() = runTest {
+        assertEquals(AppResult.Error(NoteError.NotFound), repository.restoreFromTrash(42))
+    }
+
+    @Test
+    fun `given trashed and active notes when observing trash then emits only trashed ones with their trash time`() =
+        runTest {
+            dao.insertAll(listOf(entity.copy(trashedAt = 500), entity.copy(title = "Activa")))
+            repository.addImages(1, listOf("/a.jpg"))
+
+            repository.observeTrash().test {
+                assertEquals(
+                    AppResult.Success(
+                        listOf(TrashedNote(entity.toDomain(images = listOf(NoteImage(1, "/a.jpg"))), trashedAt = 500)),
+                    ),
+                    awaitItem(),
+                )
+            }
+        }
+
+    @Test
+    fun `given observed trash when notes are moved, restored and deleted then emits each change`() = runTest {
+        dao.insertAll(listOf(entity))
+
+        repository.observeTrash().test {
+            assertEquals(emptyList<Long>(), awaitTrashIds())
+
+            repository.moveToTrash(1, trashedAt = 500)
+            assertEquals(listOf(1L), awaitTrashIds())
+
+            repository.restoreFromTrash(1)
+            assertEquals(emptyList<Long>(), awaitTrashIds())
+
+            repository.moveToTrash(1, trashedAt = 600)
+            assertEquals(listOf(1L), awaitTrashIds())
+
+            repository.deleteNotes(listOf(1))
+            assertEquals(emptyList<Long>(), awaitTrashIds())
+        }
+    }
+
+    @Test
+    fun `given trash rows without trash time when observing trash then discards them`() = runTest {
+        dao.trashQueryIncludesActive = true
+        dao.insertAll(listOf(entity.copy(trashedAt = 500), entity.copy(title = "Activa")))
+
+        repository.observeTrash().test {
+            assertEquals(AppResult.Success(listOf(TrashedNote(entity.toDomain(), trashedAt = 500))), awaitItem())
+        }
+    }
+
+    @Test
+    fun `given database failure when observing trash then emits storage error`() = runTest {
+        dao.failure = SQLiteException("disk I/O error")
+
+        repository.observeTrash().test {
+            assertEquals(AppResult.Error(NoteError.Storage), awaitItem())
+            awaitComplete()
+        }
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `given unexpected failure when observing trash then rethrows it`() = runTest {
+        dao.failure = IllegalStateException("bug")
+
+        repository.observeTrash().collect {}
+    }
+
+    @Test
+    fun `given trashed note when saving it then stays in the trash`() = runTest {
+        dao.insertAll(listOf(entity.copy(trashedAt = 500)))
+
+        val result = repository.saveNote(entity.toDomain().copy(title = "Editada"))
+
+        assertEquals(AppResult.Success(1L), result)
+        assertEquals(entity.copy(title = "Editada", trashedAt = 500), dao.stored.single())
+    }
+
+    @Test
+    fun `given trashed note when saving changes then stays in the trash`() = runTest {
+        dao.insertAll(listOf(entity.copy(trashedAt = 500)))
+
+        repository.saveNoteChanges(entity.toDomain().copy(title = "Editada"), listOf("/a.jpg"), emptyList())
+
+        assertEquals(500L, dao.stored.single().trashedAt)
+        repository.observeNotes().test {
+            assertEquals(AppResult.Success(emptyList<Note>()), awaitItem())
+        }
+    }
+
+    @Test
+    fun `given several notes with images when deleting some then removes them and their images only`() = runTest {
+        dao.insertAll(listOf(entity, entity.copy(title = "Segunda"), entity.copy(title = "Conservar")))
+        repository.addImages(1, listOf("/a.jpg"))
+        repository.addImages(2, listOf("/b.jpg"))
+        repository.addImages(3, listOf("/c.jpg"))
+
+        val result = repository.deleteNotes(listOf(1, 2))
+
+        assertEquals(AppResult.Success(Unit), result)
+        assertEquals(listOf("Conservar"), dao.stored.map { it.title })
+        assertEquals(listOf("/c.jpg"), dao.storedImages.map { it.path })
+    }
+
+    @Test
+    fun `given more ids than one statement allows when deleting notes then deletes them all in chunks`() = runTest {
+        val total = NoteDao.MAX_IDS_PER_STATEMENT * 2 + 1
+        dao.insertAll(List(total + 1) { entity.copy(title = "Nota $it") })
+
+        val result = repository.deleteNotes((1L..total).toList())
+
+        assertEquals(AppResult.Success(Unit), result)
+        assertEquals(
+            listOf(NoteDao.MAX_IDS_PER_STATEMENT, NoteDao.MAX_IDS_PER_STATEMENT, 1),
+            dao.deleteByIdsBatchSizes,
+        )
+        assertEquals(listOf("Nota $total"), dao.stored.map { it.title })
+    }
+
+    @Test
+    fun `given empty list when deleting notes then succeeds without touching the database`() = runTest {
+        dao.insertAll(listOf(entity))
+
+        val result = repository.deleteNotes(emptyList())
+
+        assertEquals(AppResult.Success(Unit), result)
+        assertEquals(0, dao.deleteByIdsCalls)
+        assertEquals(listOf(entity), dao.stored)
+    }
+
+    @Test
+    fun `given database failure when moving, restoring or deleting notes then returns storage error`() = runTest {
+        dao.failure = SQLiteException("disk full")
+
+        assertEquals(AppResult.Error(NoteError.Storage), repository.moveToTrash(1, trashedAt = 500))
+        assertEquals(AppResult.Error(NoteError.Storage), repository.restoreFromTrash(1))
+        assertEquals(AppResult.Error(NoteError.Storage), repository.deleteNotes(listOf(1)))
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `given unexpected failure when moving to trash then rethrows it`() = runTest {
+        dao.failure = IllegalStateException("bug")
+
+        repository.moveToTrash(1, trashedAt = 500)
+    }
+
+    private suspend fun ReceiveTurbine<AppResult<List<Note>, NoteError>>.awaitTitles() =
+        (awaitItem() as AppResult.Success).data.map { it.title }
+
+    private suspend fun ReceiveTurbine<AppResult<List<TrashedNote>, NoteError>>.awaitTrashIds() =
+        (awaitItem() as AppResult.Success).data.map { it.note.id }
 
     private suspend fun ReceiveTurbine<AppResult<List<Note>, NoteError>>.awaitImages() =
         (awaitItem() as AppResult.Success).data.single().images
