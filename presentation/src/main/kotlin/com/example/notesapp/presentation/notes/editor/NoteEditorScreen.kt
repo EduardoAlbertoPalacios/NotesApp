@@ -178,9 +178,6 @@ fun NoteEditorScreen(
     if (state.isLeaveDialogVisible) {
         LeaveNoteDialog(onIntent = onIntent)
     }
-    if (state.isDeleteDialogVisible) {
-        DeleteNoteDialog(onIntent = onIntent)
-    }
     state.pickerColor?.let { pickerColor ->
         NoteColorSheet(noteTitle = state.title.text, pickerColor = pickerColor, onIntent = onIntent)
     }
@@ -848,7 +845,7 @@ private fun SaveStatusRow(
     }
 }
 
-/** Al salir con cambios sin guardar (guardado automático apagado). Mismo estilo que [DeleteNoteDialog]. */
+/** Al salir con cambios sin guardar (guardado automático apagado). Mismo estilo que `ConfirmDialog`. */
 @Composable
 private fun LeaveNoteDialog(
     onIntent: (NoteEditorIntent) -> Unit,
@@ -887,36 +884,6 @@ private fun LeaveNoteDialog(
         },
         title = { Text(text = stringResource(R.string.note_editor_leave_title)) },
         text = { Text(text = stringResource(R.string.note_editor_leave_message)) },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-    )
-}
-
-@Composable
-private fun DeleteNoteDialog(
-    onIntent: (NoteEditorIntent) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    AlertDialog(
-        onDismissRequest = { onIntent(NoteEditorIntent.DeleteDismissed) },
-        confirmButton = {
-            TextButton(
-                onClick = { onIntent(NoteEditorIntent.DeleteConfirmed) },
-                colors = ButtonDefaults.textButtonColors(contentColor = NotesTheme.accent.content),
-            ) {
-                Text(text = stringResource(R.string.note_editor_delete_confirm))
-            }
-        },
-        modifier = modifier,
-        dismissButton = {
-            TextButton(
-                onClick = { onIntent(NoteEditorIntent.DeleteDismissed) },
-                colors = ButtonDefaults.textButtonColors(contentColor = NotesTheme.accent.content),
-            ) {
-                Text(text = stringResource(R.string.note_editor_delete_cancel))
-            }
-        },
-        title = { Text(text = stringResource(R.string.note_editor_delete_title)) },
-        text = { Text(text = stringResource(R.string.note_editor_delete_message)) },
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
     )
 }

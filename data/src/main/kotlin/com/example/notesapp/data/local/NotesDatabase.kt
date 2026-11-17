@@ -6,7 +6,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [NoteEntity::class, NoteImageEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = true,
     autoMigrations = [
         // v2: columna `category`, nula para las notas existentes.
@@ -15,6 +15,8 @@ import androidx.room.RoomDatabase
         AutoMigration(from = 2, to = 3),
         // v4: columna `content_spans`, vacía (sin formato) para las notas existentes.
         AutoMigration(from = 3, to = 4),
+        // v7: columna `trashed_at`, nula (fuera de la papelera) para las notas existentes.
+        AutoMigration(from = 6, to = 7),
     ],
     // v5 y v6 son migraciones manuales (cambian datos): ver `MIGRATION_4_5` y `MIGRATION_5_6`.
 )

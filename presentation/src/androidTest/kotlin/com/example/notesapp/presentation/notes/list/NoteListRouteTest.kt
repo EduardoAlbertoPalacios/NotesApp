@@ -20,6 +20,9 @@ import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
+import com.example.notesapp.domain.notes.trash.RestoreFromTrashUseCase
+import com.example.notesapp.domain.notes.trash.TrashRetention
+import com.example.notesapp.domain.notes.trash.TrashedNote
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SetNotesViewUseCase
@@ -52,8 +55,12 @@ class NoteListRouteTest {
     @Volatile
     private var navigateToSettingsCalls = 0
 
-    private fun setFailingSaveContent() {
-        val notesRepository = SingleNoteRepository(note(id = NOTE_ID))
+    @Volatile
+    private var movedToTrashShownCalls = 0
+
+    private val notesRepository = SingleNoteRepository(note(id = NOTE_ID))
+
+    private fun setFailingSaveContent(movedToTrashNoteId: Long? = null) {
         // En el hilo principal, como pide viewModelScope.
         val viewModel = composeRule.runOnUiThread {
             NoteListViewModel(
@@ -62,6 +69,7 @@ class NoteListRouteTest {
                 NoteDateFormatter(),
                 GetNotesViewUseCase(settingsRepository),
                 SetNotesViewUseCase(settingsRepository),
+                RestoreFromTrashUseCase(notesRepository),
             )
         }
         composeRule.setContent {
@@ -69,6 +77,8 @@ class NoteListRouteTest {
                 NoteListRoute(
                     onNavigateToNote = { id, _ -> openedNotes = openedNotes + id },
                     onNavigateToSettings = { navigateToSettingsCalls++ },
+                    movedToTrashNoteId = movedToTrashNoteId,
+                    onMovedToTrashShown = { movedToTrashShownCalls++ },
                     viewModel = viewModel,
                 )
             }
@@ -126,6 +136,54 @@ class NoteListRouteTest {
         composeRule.onNodeWithText(string(R.string.notes_view_save_error)).assertIsDisplayed()
     }
 
+    @Test
+    fun given_note_moved_to_trash_when_displayed_then_shows_notice_with_undo_and_reports_it_shown() {
+        setFailingSaveContent(movedToTrashNoteId = TRASHED_NOTE_ID)
+
+        waitForText(string(R.string.note_list_moved_to_trash))
+
+        composeRule.onNodeWithText(string(R.string.note_list_moved_to_trash)).assertIsDisplayed()
+        composeRule.onNodeWithText(string(R.string.note_list_undo)).assertIsDisplayed()
+        assertEquals(1, movedToTrashShownCalls)
+    }
+
+    @Test
+    fun given_moved_to_trash_notice_when_undo_clicked_then_restores_that_note() {
+        setFailingSaveContent(movedToTrashNoteId = TRASHED_NOTE_ID)
+        waitForText(string(R.string.note_list_undo))
+
+        composeRule.onNodeWithText(string(R.string.note_list_undo)).performClick()
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) { notesRepository.restoredIds.isNotEmpty() }
+
+        assertEquals(listOf(TRASHED_NOTE_ID), notesRepository.restoredIds)
+    }
+
+    @Test
+    fun given_failing_restore_when_undo_clicked_then_shows_restore_error() {
+        notesRepository.restoreSucceeds = false
+        setFailingSaveContent(movedToTrashNoteId = TRASHED_NOTE_ID)
+        waitForText(string(R.string.note_list_undo))
+
+        composeRule.onNodeWithText(string(R.string.note_list_undo)).performClick()
+        waitForText(string(R.string.note_list_restore_error))
+
+        composeRule.onNodeWithText(string(R.string.note_list_restore_error)).assertIsDisplayed()
+    }
+
+    @Test
+    fun given_no_note_moved_to_trash_when_displayed_then_shows_no_notice() {
+        setFailingSaveContent()
+
+        composeRule.onNodeWithText(string(R.string.note_list_moved_to_trash)).assertDoesNotExist()
+        assertEquals(0, movedToTrashShownCalls)
+    }
+
+    private fun waitForText(text: String) {
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) {
+            composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     private fun viewOption(view: NotesView): SemanticsNodeInteraction =
         composeRule.onNodeWithTag(NoteListTestTags.VIEW_OPTION + view.name)
 
@@ -143,12 +201,20 @@ class NoteListRouteTest {
 
     private companion object {
         const val NOTE_ID = 1L
+        const val TRASHED_NOTE_ID = 7L
         const val UPDATED_AT = 1_700_000_000_000L
         const val TIMEOUT_MS = 5_000L
     }
 }
 
 private class SingleNoteRepository(private val note: Note) : NoteRepository {
+
+    @Volatile
+    var restoreSucceeds = true
+
+    @Volatile
+    var restoredIds: List<Long> = emptyList()
+        private set
 
     override fun observeNotes(): Flow<AppResult<List<Note>, NoteError>> = flowOf(AppResult.Success(listOf(note)))
 
@@ -170,6 +236,18 @@ private class SingleNoteRepository(private val note: Note) : NoteRepository {
     ): AppResult<Note, NoteError> = AppResult.Error(NoteError.Storage)
 
     override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun moveToTrash(id: Long, trashedAt: Long): AppResult<Unit, NoteError> =
+        AppResult.Error(NoteError.Storage)
+
+    override suspend fun restoreFromTrash(id: Long): AppResult<Unit, NoteError> {
+        restoredIds = restoredIds + id
+        return if (restoreSucceeds) AppResult.Success(Unit) else AppResult.Error(NoteError.Storage)
+    }
+
+    override fun observeTrash(): Flow<AppResult<List<TrashedNote>, NoteError>> = flowOf(AppResult.Success(emptyList()))
+
+    override suspend fun deleteNotes(ids: List<Long>): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
 }
 
 /** Como el repositorio real, un fallo al guardar mantiene la vista elegida durante la sesión. */
@@ -202,5 +280,10 @@ private class FailingSaveSettingsRepository : SettingsRepository {
     override fun observeAutoSaveEnabled(): Flow<Boolean?> = flowOf(null)
 
     override suspend fun setAutoSaveEnabled(enabled: Boolean): AppResult<Unit, SettingsError> =
+        AppResult.Error(SettingsError.Storage)
+
+    override fun observeTrashRetention(): Flow<TrashRetention?> = flowOf(null)
+
+    override suspend fun setTrashRetention(retention: TrashRetention): AppResult<Unit, SettingsError> =
         AppResult.Error(SettingsError.Storage)
 }

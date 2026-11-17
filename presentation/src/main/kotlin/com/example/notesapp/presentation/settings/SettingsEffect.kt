@@ -3,6 +3,7 @@ package com.example.notesapp.presentation.settings
 sealed interface SettingsEffect {
     data object NavigateBack : SettingsEffect
     data object NavigateToExport : SettingsEffect
+    data object NavigateToTrash : SettingsEffect
     data class ShowExportDone(val exportedCount: Int) : SettingsEffect
     data object ShowExportMissingImages : SettingsEffect
     data object ShowThemeSaveError : SettingsEffect

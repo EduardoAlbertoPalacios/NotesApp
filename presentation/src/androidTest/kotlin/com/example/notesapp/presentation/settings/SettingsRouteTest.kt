@@ -14,7 +14,15 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.NoteError
+import com.example.notesapp.domain.notes.NoteImage
+import com.example.notesapp.domain.notes.NoteRepository
+import com.example.notesapp.domain.notes.trash.GetTrashRetentionUseCase
+import com.example.notesapp.domain.notes.trash.GetTrashUseCase
+import com.example.notesapp.domain.notes.trash.TrashedNote
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
@@ -32,6 +40,7 @@ import com.example.notesapp.presentation.notes.common.ColorPickerTestTags
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -53,10 +62,18 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
     @Volatile
     private var exportResultShownCalls = 0
 
+    @Volatile
+    private var navigateToTrashCalls = 0
+
     private fun setFailingSaveContent() = setRouteContent()
 
-    private fun setRouteContent(exportedCount: Int? = null, missingImageCount: Int = 0) {
+    private fun setRouteContent(
+        exportedCount: Int? = null,
+        missingImageCount: Int = 0,
+        trashedNotes: List<TrashedNote> = emptyList(),
+    ) {
         val repository = FailingSaveSettingsRepository(initialMode = activeMode)
+        val notesRepository = TrashOnlyNoteRepository(trashedNotes)
         // En el hilo principal: así el ViewModel ya tiene el tema guardado antes del primer toque.
         val viewModel = composeRule.runOnUiThread {
             SettingsViewModel(
@@ -68,6 +85,7 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
                 SetNotesViewUseCase(repository),
                 GetAutoSaveEnabledUseCase(repository),
                 SetAutoSaveEnabledUseCase(repository),
+                GetTrashUseCase(notesRepository, GetTrashRetentionUseCase(repository)) { NOW },
             )
         }
         composeRule.setContent {
@@ -76,6 +94,7 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
                     appVersion = APP_VERSION,
                     onNavigateBack = { navigateBackCalls++ },
                     onNavigateToExport = {},
+                    onNavigateToTrash = { navigateToTrashCalls++ },
                     exportedCount = exportedCount,
                     missingImageCount = missingImageCount,
                     onExportResultShown = { exportResultShownCalls++ },
@@ -293,6 +312,50 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
         assertEquals(0, exportResultShownCalls)
     }
 
+    @Test
+    fun given_trashed_notes_when_displayed_then_trash_row_shows_their_count() {
+        setRouteContent(trashedNotes = listOf(trashedNote(id = 1), trashedNote(id = 2)))
+
+        waitForText(trashCount(2))
+
+        row(SettingsTestTags.TRASH_ROW).assert(hasText(trashCount(2)))
+    }
+
+    @Test
+    fun given_empty_trash_when_displayed_then_trash_row_shows_empty() {
+        setRouteContent()
+
+        waitForText(string(R.string.settings_trash_empty))
+
+        row(SettingsTestTags.TRASH_ROW).assert(hasText(string(R.string.settings_trash_empty)))
+    }
+
+    @Test
+    fun given_settings_when_trash_row_clicked_then_navigates_to_trash() {
+        setRouteContent(trashedNotes = listOf(trashedNote(id = 1)))
+
+        row(SettingsTestTags.TRASH_ROW).performClick()
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) { navigateToTrashCalls > 0 }
+
+        assertEquals(1, navigateToTrashCalls)
+    }
+
+    private fun trashCount(count: Int): String = InstrumentationRegistry.getInstrumentation().targetContext
+        .resources.getQuantityString(R.plurals.settings_trash_count, count, count)
+
+    private fun trashedNote(id: Long) = TrashedNote(
+        note = Note(
+            id = id,
+            title = "Nota $id",
+            content = "",
+            color = NoteColor.NONE,
+            isPinned = false,
+            category = null,
+            updatedAt = NOW,
+        ),
+        trashedAt = NOW,
+    )
+
     private fun waitForText(text: String, timeoutMillis: Long = TIMEOUT_MS) {
         composeRule.waitUntil(timeoutMillis = timeoutMillis) {
             composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
@@ -314,6 +377,7 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
 
         private const val APP_VERSION = "9.8.7-test"
         private const val TIMEOUT_MS = 5_000L
+        private const val NOW = 1_700_000_000_000L
 
         /** Un aviso corto dura 4 s: el siguiente de la cola aparece después. */
         private const val SNACKBAR_QUEUE_TIMEOUT_MS = 10_000L
@@ -327,6 +391,7 @@ private class FailingSaveSettingsRepository(initialMode: ThemeMode) : SettingsRe
     private val defaultNoteColor = MutableStateFlow<NoteColor?>(null)
     private val notesView = MutableStateFlow<NotesView?>(null)
     private val autoSaveEnabled = MutableStateFlow<Boolean?>(null)
+    private val trashRetention = MutableStateFlow<TrashRetention?>(null)
 
     override fun observeThemeMode(): Flow<ThemeMode?> = themeMode
 
@@ -355,4 +420,44 @@ private class FailingSaveSettingsRepository(initialMode: ThemeMode) : SettingsRe
         autoSaveEnabled.value = enabled
         return AppResult.Error(SettingsError.Storage)
     }
+
+    override fun observeTrashRetention(): Flow<TrashRetention?> = trashRetention
+
+    /** A diferencia de los demás ajustes, si falla el plazo observado no cambia. */
+    override suspend fun setTrashRetention(retention: TrashRetention): AppResult<Unit, SettingsError> =
+        AppResult.Error(SettingsError.Storage)
+}
+
+/** Solo sirve la papelera, que es lo único que Ajustes lee de las notas. */
+private class TrashOnlyNoteRepository(private val trashed: List<TrashedNote>) : NoteRepository {
+
+    override fun observeTrash(): Flow<AppResult<List<TrashedNote>, NoteError>> = flowOf(AppResult.Success(trashed))
+
+    override fun observeNotes(): Flow<AppResult<List<Note>, NoteError>> = flowOf(AppResult.Success(emptyList()))
+
+    override suspend fun getNote(id: Long): AppResult<Note, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun saveNote(note: Note): AppResult<Long, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun deleteNote(id: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun addImages(noteId: Long, paths: List<String>): AppResult<List<NoteImage>, NoteError> =
+        AppResult.Error(NoteError.Storage)
+
+    override suspend fun removeImage(imageId: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun saveNoteChanges(
+        note: Note,
+        addedPaths: List<String>,
+        removedImageIds: List<Long>,
+    ): AppResult<Note, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun moveToTrash(id: Long, trashedAt: Long): AppResult<Unit, NoteError> =
+        AppResult.Error(NoteError.Storage)
+
+    override suspend fun restoreFromTrash(id: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
+
+    override suspend fun deleteNotes(ids: List<Long>): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
 }

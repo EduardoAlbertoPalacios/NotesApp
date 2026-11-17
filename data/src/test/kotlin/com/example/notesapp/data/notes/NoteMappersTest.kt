@@ -10,7 +10,9 @@ import com.example.notesapp.domain.notes.NoteCategory
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.TextFormat
+import com.example.notesapp.domain.notes.trash.TrashedNote
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class NoteMappersTest {
@@ -208,5 +210,29 @@ class NoteMappersTest {
     @Test
     fun `given note with images when mapping to entity then ignores images`() {
         assertEquals(entity, note.copy(images = listOf(NoteImage(3, "/a.jpg"))).toEntity())
+    }
+
+    @Test
+    fun `given trashed note with images when mapping to trashed note then keeps note, images and trash time`() {
+        val withImages = NoteWithImages(
+            note = entity.copy(trashedAt = 5_000),
+            images = listOf(NoteImageEntity(id = 3, noteId = 7, path = "/a.jpg")),
+        )
+
+        val trashed = withImages.toTrashedNote()
+
+        assertEquals(TrashedNote(note = note.copy(images = listOf(NoteImage(3, "/a.jpg"))), trashedAt = 5_000), trashed)
+    }
+
+    @Test
+    fun `given note without trash time when mapping to trashed note then returns null`() {
+        val withImages = NoteWithImages(note = entity, images = emptyList())
+
+        assertNull(withImages.toTrashedNote())
+    }
+
+    @Test
+    fun `given note when mapping to entity then is outside the trash`() {
+        assertEquals(null, note.toEntity().trashedAt)
     }
 }

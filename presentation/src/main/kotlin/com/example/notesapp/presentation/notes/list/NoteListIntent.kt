@@ -10,4 +10,8 @@ sealed interface NoteListIntent {
     data class QueryChanged(val query: String) : NoteListIntent
     data object ClearQueryClicked : NoteListIntent
     data class NotesViewSelected(val view: NotesView) : NoteListIntent
+    /** El editor movió la nota [id] a la papelera (spec 012, RF-3). */
+    data class NoteMovedToTrash(val id: Long) : NoteListIntent
+    /** «Deshacer» en el aviso de la nota movida a la papelera (RF-4). */
+    data class UndoMoveToTrashClicked(val id: Long) : NoteListIntent
 }

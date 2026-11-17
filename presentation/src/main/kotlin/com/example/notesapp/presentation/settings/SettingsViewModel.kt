@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.GetTrashUseCase
 import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
@@ -37,6 +38,7 @@ class SettingsViewModel @Inject constructor(
     private val setNotesView: SetNotesViewUseCase,
     getAutoSaveEnabled: GetAutoSaveEnabledUseCase,
     private val setAutoSaveEnabled: SetAutoSaveEnabledUseCase,
+    getTrash: GetTrashUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -58,6 +60,12 @@ class SettingsViewModel @Inject constructor(
         getAutoSaveEnabled()
             .onEach { enabled -> _state.update { it.copy(isAutoSaveEnabled = enabled) } }
             .launchIn(viewModelScope)
+        getTrash()
+            .onEach { result ->
+                val count = (result as? AppResult.Success)?.data?.size
+                _state.update { it.copy(trashCount = count) }
+            }
+            .launchIn(viewModelScope)
     }
 
     fun onIntent(intent: SettingsIntent) {
@@ -75,6 +83,7 @@ class SettingsViewModel @Inject constructor(
             is SettingsIntent.NotesViewSelected -> selectNotesView(intent.view)
             SettingsIntent.AutoSaveToggled -> toggleAutoSave()
             SettingsIntent.ExportRowClicked -> send(SettingsEffect.NavigateToExport)
+            SettingsIntent.TrashRowClicked -> send(SettingsEffect.NavigateToTrash)
             is SettingsIntent.ExportFinished -> {
                 // RF-20, RF-45: un aviso tras otro; la cola de avisos los muestra en orden.
                 send(SettingsEffect.ShowExportDone(intent.exportedCount))

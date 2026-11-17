@@ -2,7 +2,13 @@ package com.example.notesapp.presentation.settings
 
 import app.cash.turbine.test
 import com.example.notesapp.common.result.AppResult
+import com.example.notesapp.common.time.TimeProvider
+import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.GetTrashRetentionUseCase
+import com.example.notesapp.domain.notes.trash.GetTrashUseCase
+import com.example.notesapp.domain.notes.trash.TrashRetention
+import com.example.notesapp.domain.notes.trash.TrashedNote
 import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
@@ -15,6 +21,7 @@ import com.example.notesapp.domain.settings.SetThemeModeUseCase
 import com.example.notesapp.domain.settings.SettingsError
 import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.MainDispatcherRule
+import com.example.notesapp.presentation.notes.trash.FakeTrashNoteRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -29,6 +36,7 @@ class SettingsViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository = FakeSettingsRepository()
+    private val noteRepository = FakeTrashNoteRepository()
 
     private fun createViewModel() = SettingsViewModel(
         GetThemeModeUseCase(repository),
@@ -39,6 +47,7 @@ class SettingsViewModelTest {
         SetNotesViewUseCase(repository),
         GetAutoSaveEnabledUseCase(repository),
         SetAutoSaveEnabledUseCase(repository),
+        GetTrashUseCase(noteRepository, GetTrashRetentionUseCase(repository), TimeProvider { NOW }),
     )
 
     private suspend fun createViewModelWithTheme(mode: ThemeMode?): SettingsViewModel {
@@ -889,5 +898,86 @@ class SettingsViewModelTest {
             expectNoEvents()
         }
         assertEquals(listOf(false), repository.savedAutoSaveEnabled)
+    }
+
+    // --- Papelera (spec 012) ---
+
+    @Test
+    fun `given notes in trash when created then state shows how many there are`() = runTest {
+        repository.emitStoredTrashRetention(TrashRetention.DAYS_30)
+        noteRepository.emitTrash(trashed(id = 1), trashed(id = 2))
+
+        val viewModel = createViewModel()
+
+        assertEquals(2, viewModel.state.value.trashCount)
+    }
+
+    @Test
+    fun `given empty trash when created then trash count is zero`() = runTest {
+        repository.emitStoredTrashRetention(TrashRetention.DAYS_30)
+        noteRepository.emitTrash()
+
+        val viewModel = createViewModel()
+
+        assertEquals(0, viewModel.state.value.trashCount)
+    }
+
+    @Test
+    fun `given trash cannot be read when created then trash count is null`() = runTest {
+        repository.emitStoredTrashRetention(TrashRetention.DAYS_30)
+        noteRepository.emitTrashError()
+
+        val viewModel = createViewModel()
+
+        assertNull(viewModel.state.value.trashCount)
+    }
+
+    @Test
+    fun `given trash not read yet when created then trash count is null`() {
+        val viewModel = createViewModel()
+
+        assertNull(viewModel.state.value.trashCount)
+    }
+
+    @Test
+    fun `given trash count when trash changes then state follows it`() = runTest {
+        repository.emitStoredTrashRetention(TrashRetention.DAYS_30)
+        noteRepository.emitTrash(trashed(id = 1))
+        val viewModel = createViewModel()
+
+        noteRepository.emitTrash(trashed(id = 1), trashed(id = 2), trashed(id = 3))
+
+        assertEquals(3, viewModel.state.value.trashCount)
+    }
+
+    @Test
+    fun `given settings when trash row clicked then navigates to trash without changing state`() = runTest {
+        val viewModel = createViewModelWithTheme(ThemeMode.DARK)
+        val stateBefore = viewModel.state.value
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.TrashRowClicked)
+
+            assertEquals(SettingsEffect.NavigateToTrash, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(stateBefore, viewModel.state.value)
+    }
+
+    private fun trashed(id: Long) = TrashedNote(
+        note = Note(
+            id = id,
+            title = "Nota $id",
+            content = "Contenido",
+            color = NoteColor.MINT,
+            isPinned = false,
+            category = null,
+            updatedAt = NOW,
+        ),
+        trashedAt = NOW,
+    )
+
+    private companion object {
+        const val NOW = 1_700_000_000_000L
     }
 }

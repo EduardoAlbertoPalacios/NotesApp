@@ -38,7 +38,6 @@ data class NoteEditorUiState(
     val date: NoteDateLabel? = null,
     val saveStatus: SaveStatus = SaveStatus.Idle,
     val loadError: LoadError? = null,
-    val isDeleteDialogVisible: Boolean = false,
     /** Hay algún paso que deshacer: el botón «Deshacer» se habilita. */
     val canUndo: Boolean = false,
     /** Campo que debe recibir el foco tras deshacer; nulo si no hay ninguna petición o ya se atendió. */

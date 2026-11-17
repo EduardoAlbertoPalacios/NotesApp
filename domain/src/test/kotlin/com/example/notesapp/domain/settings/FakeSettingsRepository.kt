@@ -2,6 +2,7 @@ package com.example.notesapp.domain.settings
 
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -15,7 +16,12 @@ class FakeSettingsRepository : SettingsRepository {
     val savedNotesViews = mutableListOf<NotesView>()
     val autoSaveEnabled = MutableStateFlow<Boolean?>(null)
     val savedAutoSaveEnabled = mutableListOf<Boolean>()
+    val trashRetention = MutableStateFlow<TrashRetention?>(null)
+    val savedTrashRetentions = mutableListOf<TrashRetention>()
     var failure: SettingsError? = null
+
+    /** Falla solo al guardar el plazo de la papelera; como el real, el plazo observado no cambia. */
+    var trashRetentionFailure: SettingsError? = null
 
     override fun observeThemeMode(): Flow<ThemeMode?> = themeMode
 
@@ -50,6 +56,15 @@ class FakeSettingsRepository : SettingsRepository {
         failure?.let { return AppResult.Error(it) }
         savedAutoSaveEnabled += enabled
         autoSaveEnabled.value = enabled
+        return AppResult.Success(Unit)
+    }
+
+    override fun observeTrashRetention(): Flow<TrashRetention?> = trashRetention
+
+    override suspend fun setTrashRetention(retention: TrashRetention): AppResult<Unit, SettingsError> {
+        (failure ?: trashRetentionFailure)?.let { return AppResult.Error(it) }
+        savedTrashRetentions += retention
+        trashRetention.value = retention
         return AppResult.Success(Unit)
     }
 }

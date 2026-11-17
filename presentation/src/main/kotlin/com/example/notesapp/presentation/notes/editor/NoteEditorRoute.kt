@@ -31,6 +31,7 @@ import java.io.File
 @Composable
 fun NoteEditorRoute(
     onNavigateBack: () -> Unit,
+    onMovedToTrash: (noteId: Long) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: NoteEditorViewModel = hiltViewModel(),
 ) {
@@ -38,6 +39,7 @@ fun NoteEditorRoute(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val currentOnNavigateBack by rememberUpdatedState(onNavigateBack)
+    val currentOnMovedToTrash by rememberUpdatedState(onMovedToTrash)
 
     // Selector de fotos del sistema: no requiere permisos de almacenamiento.
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
@@ -51,6 +53,7 @@ fun NoteEditorRoute(
         viewModel.effects.collect { effect ->
             when (effect) {
                 NoteEditorEffect.NavigateBack -> currentOnNavigateBack()
+                is NoteEditorEffect.MovedToTrash -> currentOnMovedToTrash(effect.noteId)
                 NoteEditorEffect.OpenImagePicker -> imagePicker.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                 )

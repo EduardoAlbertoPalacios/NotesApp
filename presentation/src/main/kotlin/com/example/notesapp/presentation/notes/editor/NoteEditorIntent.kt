@@ -29,9 +29,8 @@ sealed interface NoteEditorIntent {
     data object ColorApplied : NoteEditorIntent
     /** Cerrar el selector sin aplicar descarta la opción elegida. */
     data object ColorPickerDismissed : NoteEditorIntent
+    /** Mueve la nota a la papelera, sin confirmación (spec 012, RF-1). */
     data object DeleteClicked : NoteEditorIntent
-    data object DeleteConfirmed : NoteEditorIntent
-    data object DeleteDismissed : NoteEditorIntent
     data object BackClicked : NoteEditorIntent
     /** Botón Guardar, solo con el guardado automático apagado. */
     data object SaveClicked : NoteEditorIntent

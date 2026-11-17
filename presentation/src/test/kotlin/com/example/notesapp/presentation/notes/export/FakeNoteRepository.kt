@@ -5,8 +5,10 @@ import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteError
 import com.example.notesapp.domain.notes.NoteImage
 import com.example.notesapp.domain.notes.NoteRepository
+import com.example.notesapp.domain.notes.trash.TrashedNote
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 /** Repositorio que emite lo que la prueba indique y registra cualquier escritura, que exportar no debe hacer. */
 class FakeNoteRepository : NoteRepository {
@@ -54,4 +56,21 @@ class FakeNoteRepository : NoteRepository {
     }
 
     override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> = AppResult.Success(emptySet())
+
+    override suspend fun moveToTrash(id: Long, trashedAt: Long): AppResult<Unit, NoteError> {
+        writes += "moveToTrash"
+        return AppResult.Error(NoteError.Storage)
+    }
+
+    override suspend fun restoreFromTrash(id: Long): AppResult<Unit, NoteError> {
+        writes += "restoreFromTrash"
+        return AppResult.Error(NoteError.Storage)
+    }
+
+    override fun observeTrash(): Flow<AppResult<List<TrashedNote>, NoteError>> = emptyFlow()
+
+    override suspend fun deleteNotes(ids: List<Long>): AppResult<Unit, NoteError> {
+        writes += "deleteNotes"
+        return AppResult.Error(NoteError.Storage)
+    }
 }

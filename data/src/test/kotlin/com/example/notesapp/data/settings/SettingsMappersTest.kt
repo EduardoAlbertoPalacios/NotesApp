@@ -1,6 +1,7 @@
 package com.example.notesapp.data.settings
 
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.ThemeMode
 import org.junit.Assert.assertEquals
@@ -127,7 +128,43 @@ class SettingsMappersTest {
         assertNull("GRID".toNotesViewOrNull())
     }
 
+    @Test
+    fun `given each retention when mapping to storage then uses its stable text`() {
+        retentionsByStorageValue.forEach { (text, retention) ->
+            assertEquals(text, retention.toStorageValue())
+        }
+    }
+
+    @Test
+    fun `given each retention when mapping to storage and back then is unchanged`() {
+        TrashRetention.entries.forEach { retention ->
+            assertEquals(retention, retention.toStorageValue().toTrashRetentionOrNull())
+        }
+    }
+
+    @Test
+    fun `given no value when mapping to retention then is null`() {
+        assertNull((null as String?).toTrashRetentionOrNull())
+    }
+
+    @Test
+    fun `given unknown text when mapping to retention then is null`() {
+        assertNull("14_days".toTrashRetentionOrNull())
+    }
+
+    @Test
+    fun `given enum name when mapping to retention then is null`() {
+        assertNull("DAYS_30".toTrashRetentionOrNull())
+    }
+
     private companion object {
+        val retentionsByStorageValue = mapOf(
+            "7_days" to TrashRetention.DAYS_7,
+            "30_days" to TrashRetention.DAYS_30,
+            "90_days" to TrashRetention.DAYS_90,
+            "never" to TrashRetention.NEVER,
+        )
+
         val viewsByStorageValue = mapOf(
             "grid" to NotesView.GRID,
             "list" to NotesView.LIST,

@@ -1,6 +1,7 @@
 package com.example.notesapp.data.settings
 
 import com.example.notesapp.domain.notes.NoteColor
+import com.example.notesapp.domain.notes.trash.TrashRetention
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.ThemeMode
 
@@ -65,5 +66,26 @@ internal fun NotesView.toStorageValue(): String = when (this) {
 internal fun String?.toNotesViewOrNull(): NotesView? = when (this) {
     VIEW_GRID -> NotesView.GRID
     VIEW_LIST -> NotesView.LIST
+    else -> null
+}
+
+private const val RETENTION_7_DAYS = "7_days"
+private const val RETENTION_30_DAYS = "30_days"
+private const val RETENTION_90_DAYS = "90_days"
+private const val RETENTION_NEVER = "never"
+
+internal fun TrashRetention.toStorageValue(): String = when (this) {
+    TrashRetention.DAYS_7 -> RETENTION_7_DAYS
+    TrashRetention.DAYS_30 -> RETENTION_30_DAYS
+    TrashRetention.DAYS_90 -> RETENTION_90_DAYS
+    TrashRetention.NEVER -> RETENTION_NEVER
+}
+
+/** `null` si no hay valor o no es uno conocido. */
+internal fun String?.toTrashRetentionOrNull(): TrashRetention? = when (this) {
+    RETENTION_7_DAYS -> TrashRetention.DAYS_7
+    RETENTION_30_DAYS -> TrashRetention.DAYS_30
+    RETENTION_90_DAYS -> TrashRetention.DAYS_90
+    RETENTION_NEVER -> TrashRetention.NEVER
     else -> null
 }

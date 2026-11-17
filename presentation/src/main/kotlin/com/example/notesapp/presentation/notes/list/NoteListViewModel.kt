@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.GetNotesUseCase
 import com.example.notesapp.domain.notes.Note
+import com.example.notesapp.domain.notes.trash.RestoreFromTrashUseCase
 import com.example.notesapp.domain.settings.GetNotesViewUseCase
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.SetNotesViewUseCase
@@ -35,6 +36,7 @@ class NoteListViewModel @Inject constructor(
     private val dateFormatter: NoteDateFormatter,
     private val getNotesView: GetNotesViewUseCase,
     private val setNotesView: SetNotesViewUseCase,
+    private val restoreFromTrash: RestoreFromTrashUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NoteListUiState(query = savedStateHandle[QUERY_KEY] ?: ""))
@@ -67,6 +69,8 @@ class NoteListViewModel @Inject constructor(
             is NoteListIntent.QueryChanged -> updateQuery(intent.query)
             NoteListIntent.ClearQueryClicked -> updateQuery("")
             is NoteListIntent.NotesViewSelected -> selectNotesView(intent.view)
+            is NoteListIntent.NoteMovedToTrash -> send(NoteListEffect.ShowMovedToTrash(intent.id))
+            is NoteListIntent.UndoMoveToTrashClicked -> undoMoveToTrash(intent.id)
         }
     }
 
@@ -127,6 +131,13 @@ class NoteListViewModel @Inject constructor(
             category = category,
             listContent = if (contentTasks.isEmpty()) cardContent else buildCardContent(content, contentSpans, contentTasks, flowTasks = true),
         )
+    }
+
+    /** La nota vuelve tal como estaba; la lista la muestra al observar el cambio (RF-4). */
+    private fun undoMoveToTrash(id: Long) {
+        viewModelScope.launch {
+            if (restoreFromTrash(id) is AppResult.Error) _effects.send(NoteListEffect.ShowRestoreError)
+        }
     }
 
     private fun send(effect: NoteListEffect) {

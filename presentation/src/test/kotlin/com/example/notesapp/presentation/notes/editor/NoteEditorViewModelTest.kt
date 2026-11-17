@@ -28,6 +28,8 @@ import com.example.notesapp.domain.notes.RestoreNoteUseCase
 import com.example.notesapp.domain.notes.SaveNoteChangesUseCase
 import com.example.notesapp.domain.notes.SaveNoteUseCase
 import com.example.notesapp.domain.notes.TextFormat
+import com.example.notesapp.domain.notes.trash.MoveNoteToTrashUseCase
+import com.example.notesapp.domain.notes.trash.TrashedNote
 import com.example.notesapp.domain.settings.GetAutoSaveEnabledUseCase
 import com.example.notesapp.domain.settings.GetDefaultNoteColorUseCase
 import com.example.notesapp.presentation.MainDispatcherRule
@@ -114,6 +116,7 @@ class NoteEditorViewModelTest {
         saveNote = SaveNoteUseCase(repository, TimeProvider { NOW }),
         restoreNote = RestoreNoteUseCase(repository),
         deleteNote = DeleteNoteUseCase(repository, imageStorage),
+        moveNoteToTrash = MoveNoteToTrashUseCase(repository, TimeProvider { NOW }),
         addNoteImages = AddNoteImagesUseCase(repository, imageStorage, TimeProvider { NOW }),
         removeNoteImage = RemoveNoteImageUseCase(repository, imageStorage),
         dateFormatter = dateFormatter,
@@ -261,56 +264,70 @@ class NoteEditorViewModelTest {
     }
 
     @Test
-    fun `given delete clicked and dismissed when intents received then toggles the dialog`() = runTest {
-        val viewModel = createViewModel()
+    fun `given existing note when delete clicked then moves it to trash without dialog and emits moved to trash`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
 
-        viewModel.onIntent(NoteEditorIntent.DeleteClicked)
-        assertTrue(viewModel.state.value.isDeleteDialogVisible)
-
-        viewModel.onIntent(NoteEditorIntent.DeleteDismissed)
-        assertEquals(false, viewModel.state.value.isDeleteDialogVisible)
-    }
-
-    @Test
-    fun `given existing note when delete confirmed then deletes it and navigates back`() = runTest {
-        repository.notes[existing.id] = existing
-        val viewModel = createViewModel(existing.id)
-        advanceUntilIdle()
-
-        viewModel.effects.test {
-            viewModel.onIntent(NoteEditorIntent.DeleteClicked)
-            viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
-            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+                assertEquals(NoteEditorEffect.MovedToTrash(existing.id), awaitItem())
+                expectNoEvents()
+            }
+            assertTrue(repository.notes.isEmpty())
+            assertEquals(listOf(TrashedNote(existing, NOW)), repository.trashed.values.toList())
         }
-        assertTrue(repository.notes.isEmpty())
-        assertEquals(false, viewModel.state.value.isDeleteDialogVisible)
-    }
 
     @Test
-    fun `given unsaved new note when delete confirmed then discards it and navigates back`() = runTest {
+    fun `given unsaved new note when delete clicked then discards it and navigates back without trashing`() = runTest {
         val viewModel = createViewModel()
 
         viewModel.effects.test {
             viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Borrador")))
-            viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+            viewModel.onIntent(NoteEditorIntent.DeleteClicked)
             assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            expectNoEvents()
         }
         advanceUntilIdle()
         assertTrue(repository.notes.isEmpty())
+        assertTrue(repository.trashed.isEmpty())
     }
 
     @Test
-    fun `given delete failure when delete confirmed then shows message`() = runTest {
+    fun `given move to trash failure when delete clicked then shows delete error and keeps the note`() = runTest {
         repository.notes[existing.id] = existing
         val viewModel = createViewModel(existing.id)
         advanceUntilIdle()
         repository.failure = NoteError.Storage
 
         viewModel.effects.test {
-            viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+            viewModel.onIntent(NoteEditorIntent.DeleteClicked)
             assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error), awaitItem())
+            expectNoEvents()
         }
+        assertEquals(existing, repository.notes[existing.id])
+        assertTrue(repository.trashed.isEmpty())
     }
+
+    @Test
+    fun `given pending changes in automatic mode when delete clicked then trashes last saved version without saving`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+            viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue("Cambio sin guardar")))
+            runCurrent()
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+                assertEquals(NoteEditorEffect.MovedToTrash(existing.id), awaitItem())
+            }
+            advanceUntilIdle()
+
+            assertEquals(0, repository.saveCount)
+            assertEquals(TrashedNote(existing, NOW), repository.trashed[existing.id])
+        }
 
     @Test
     fun `given category argument when creating new note then starts with that category`() = runTest {
@@ -660,16 +677,18 @@ class NoteEditorViewModelTest {
     }
 
     @Test
-    fun `given note with images when delete confirmed then deletes their files`() = runTest {
-        repository.notes[existing.id] = existing.copy(images = listOf(imageA, imageB))
+    fun `given note with images when delete clicked then moves it to trash keeping their files`() = runTest {
+        val withImages = existing.copy(images = listOf(imageA, imageB))
+        repository.notes[existing.id] = withImages
         val viewModel = createViewModel(existing.id)
         advanceUntilIdle()
 
         viewModel.effects.test {
-            viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
-            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+            assertEquals(NoteEditorEffect.MovedToTrash(existing.id), awaitItem())
         }
-        assertEquals(listOf(imageA.path, imageB.path), imageStorage.deletedPaths)
+        assertEquals(TrashedNote(withImages, NOW), repository.trashed[existing.id])
+        assertTrue(imageStorage.deletedPaths.isEmpty())
     }
 
     @Test
@@ -2954,35 +2973,36 @@ class NoteEditorViewModelTest {
     }
 
     @Test
-    fun `given pending changes in manual mode when delete confirmed then deletes note and discards copies without dialog`() =
+    fun `given pending changes in manual mode when delete clicked then trashes last saved version and discards copies`() =
         runTest {
-            val viewModel = openManually(existing.copy(images = listOf(imageA)))
+            val saved = existing.copy(images = listOf(imageA))
+            val viewModel = openManually(saved)
             viewModel.typeInTitle("!")
             viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
             advanceUntilIdle()
 
             viewModel.effects.test {
                 viewModel.onIntent(NoteEditorIntent.DeleteClicked)
-                viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
-                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                assertEquals(NoteEditorEffect.MovedToTrash(existing.id), awaitItem())
+                expectNoEvents()
             }
             assertFalse(viewModel.state.value.isLeaveDialogVisible)
-            assertFalse(viewModel.state.value.isDeleteDialogVisible)
             assertTrue(repository.notes.isEmpty())
+            assertEquals(TrashedNote(saved, NOW), repository.trashed[existing.id])
             assertEquals(0, repository.saveCount)
             assertTrue(copyOf(URI_A) in imageStorage.deletedPaths)
-            assertTrue(imageA.path in imageStorage.deletedPaths)
+            assertFalse(imageA.path in imageStorage.deletedPaths)
         }
 
     @Test
-    fun `given new note with pending images in manual mode when delete confirmed then discards copies and stores nothing`() =
+    fun `given new note with pending images in manual mode when delete clicked then discards copies and stores nothing`() =
         runTest {
             val viewModel = createManualViewModel()
             viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
             advanceUntilIdle()
 
             viewModel.effects.test {
-                viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+                viewModel.onIntent(NoteEditorIntent.DeleteClicked)
                 assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
             }
             assertTrue(repository.notes.isEmpty())
@@ -3035,13 +3055,13 @@ class NoteEditorViewModelTest {
     }
 
     @Test
-    fun `given orphan image file when note deleted in manual mode then deletes it before navigating back`() = runTest {
+    fun `given orphan image file when note moved to trash in manual mode then deletes it before closing`() = runTest {
         val viewModel = openManually()
         imageStorage.save(URI_C)
 
         viewModel.effects.test {
-            viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
-            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+            assertEquals(NoteEditorEffect.MovedToTrash(existing.id), awaitItem())
             assertEquals(listOf(copyOf(URI_C)), imageStorage.deletedPaths)
         }
     }
@@ -3359,7 +3379,7 @@ class NoteEditorViewModelTest {
     }
 
     @Test
-    fun `given delete failure in manual mode when delete confirmed then keeps copies images pending changes and draft`() =
+    fun `given move to trash failure in manual mode when delete clicked then keeps copies images pending changes and draft`() =
         runTest {
             val handle = savedStateHandle(existing.id)
             val withImages = existing.copy(images = listOf(imageA, imageB))
@@ -3373,7 +3393,6 @@ class NoteEditorViewModelTest {
 
             viewModel.effects.test {
                 viewModel.onIntent(NoteEditorIntent.DeleteClicked)
-                viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
                 assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error), awaitItem())
                 expectNoEvents()
             }
@@ -3386,16 +3405,17 @@ class NoteEditorViewModelTest {
             assertNotNull(draft)
             assertEquals(draft, EditorDraftCodec.read(handle))
             assertEquals(withImages, repository.notes[existing.id])
+            assertTrue(repository.trashed.isEmpty())
         }
 
     @Test
-    fun `given failed delete in manual mode when save clicked then stores the pending image changes`() = runTest {
+    fun `given failed move to trash in manual mode when save clicked then stores the pending image changes`() = runTest {
         val viewModel = openManually(existing.copy(images = listOf(imageA, imageB)))
         viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
         viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageB))
         advanceUntilIdle()
         repository.failure = NoteError.Storage
-        viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+        viewModel.onIntent(NoteEditorIntent.DeleteClicked)
         advanceUntilIdle()
         repository.failure = null
 
@@ -3460,7 +3480,7 @@ class NoteEditorViewModelTest {
         }
 
     @Test
-    fun `given image being copied in new manual note when delete confirmed then waits for the copy and deletes it`() =
+    fun `given image being copied in new manual note when delete clicked then waits for the copy and deletes it`() =
         runTest {
             val viewModel = createManualViewModel()
             viewModel.typeInTitle("Viaje")
@@ -3470,7 +3490,7 @@ class NoteEditorViewModelTest {
             runCurrent()
 
             viewModel.effects.test {
-                viewModel.onIntent(NoteEditorIntent.DeleteConfirmed)
+                viewModel.onIntent(NoteEditorIntent.DeleteClicked)
                 runCurrent()
                 expectNoEvents()
 
@@ -3795,6 +3815,8 @@ class NoteEditorViewModelTest {
 
     private class InMemoryNoteRepository : NoteRepository {
         val notes = linkedMapOf<Long, Note>()
+        /** Notas movidas a la papelera, por id. */
+        val trashed = linkedMapOf<Long, TrashedNote>()
         var failure: NoteError? = null
         var addImagesFailure: NoteError? = null
         var removeImageFailure: NoteError? = null
@@ -3857,8 +3879,24 @@ class NoteEditorViewModelTest {
 
         override suspend fun getImagePaths(): AppResult<Set<String>, NoteError> {
             failure?.let { return AppResult.Error(it) }
-            return AppResult.Success(notes.values.flatMap { note -> note.images.map { it.path } }.toSet())
+            // Como la implementación real, incluye las imágenes de las notas de la papelera.
+            val all = notes.values + trashed.values.map { it.note }
+            return AppResult.Success(all.flatMap { note -> note.images.map { it.path } }.toSet())
         }
+
+        override suspend fun moveToTrash(id: Long, trashedAt: Long): AppResult<Unit, NoteError> {
+            failure?.let { return AppResult.Error(it) }
+            val note = notes.remove(id) ?: return AppResult.Error(NoteError.NotFound)
+            trashed[id] = TrashedNote(note, trashedAt)
+            return AppResult.Success(Unit)
+        }
+
+        override suspend fun restoreFromTrash(id: Long): AppResult<Unit, NoteError> = AppResult.Error(NoteError.Storage)
+
+        override fun observeTrash(): Flow<AppResult<List<TrashedNote>, NoteError>> = emptyFlow()
+
+        override suspend fun deleteNotes(ids: List<Long>): AppResult<Unit, NoteError> =
+            AppResult.Error(NoteError.Storage)
     }
 
     private class FakeImageStorage : ImageStorage {

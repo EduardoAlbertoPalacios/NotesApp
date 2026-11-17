@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.navigation.NotesNavHost
 import com.example.notesapp.presentation.settings.AppThemeViewModel
+import com.example.notesapp.presentation.startup.AppStartupViewModel
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -30,10 +31,13 @@ private val LegacyNavigationBarScrim = Color.argb(0x80, 0x1B, 0x1B, 0x1B)
 class MainActivity : ComponentActivity() {
 
     private val appThemeViewModel: AppThemeViewModel by viewModels()
+    private val appStartupViewModel: AppStartupViewModel by viewModels()
     private var isThemeReady = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // `by viewModels()` es perezoso: tocarlo aquí lo crea al abrir la app y hace sus tareas de arranque.
+        appStartupViewModel
         holdFirstDrawUntilThemeReady()
         setContent {
             val themeMode by appThemeViewModel.themeMode.collectAsStateWithLifecycle()

@@ -17,6 +17,7 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.hasText
 import com.example.notesapp.domain.notes.NoteColor
 import androidx.compose.ui.test.SemanticsMatcher
@@ -164,20 +165,22 @@ class NoteEditorScreenTest {
         setContent(NoteEditorUiState(title = TextFieldValue("Ideas")))
 
         composeRule.onNodeWithTag(NoteEditorTestTags.MORE).performClick()
-        composeRule.onNodeWithTag(NoteEditorTestTags.DELETE).performClick()
+        composeRule.onNodeWithTag(NoteEditorTestTags.DELETE)
+            .assert(hasText(string(R.string.note_editor_delete)))
+            .performClick()
 
         assertEquals(listOf<NoteEditorIntent>(NoteEditorIntent.DeleteClicked), userIntents)
     }
 
     @Test
-    fun given_delete_dialog_when_confirmed_or_cancelled_then_sends_intents() {
-        setContent(NoteEditorUiState(title = TextFieldValue("Ideas"), isDeleteDialogVisible = true))
+    fun given_more_options_when_delete_selected_then_no_confirmation_dialog_appears() {
+        setContent(NoteEditorUiState(title = TextFieldValue("Ideas")))
 
-        composeRule.onNodeWithText("¿Eliminar esta nota?").assertIsDisplayed()
-        composeRule.onNodeWithText("Cancelar").performClick()
-        composeRule.onNodeWithText("Eliminar").performClick()
+        composeRule.onNodeWithTag(NoteEditorTestTags.MORE).performClick()
+        composeRule.onNodeWithTag(NoteEditorTestTags.DELETE).performClick()
+        composeRule.waitForIdle()
 
-        assertEquals(listOf(NoteEditorIntent.DeleteDismissed, NoteEditorIntent.DeleteConfirmed), userIntents)
+        composeRule.onNode(isDialog()).assertDoesNotExist()
     }
 
     @Test
