@@ -30,15 +30,11 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
@@ -51,18 +47,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -71,7 +64,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +75,7 @@ import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.notes.TextFormat
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.common.SearchField
 import com.example.notesapp.presentation.notes.common.CARD_TASK_DONE
 import com.example.notesapp.presentation.notes.common.CARD_TASK_PENDING
 import com.example.notesapp.presentation.notes.common.NoteDateLabel
@@ -153,7 +146,16 @@ fun NoteListScreen(
         ) {
             fullLineItem { NoteListHeader(state = state, onIntent = onIntent) }
             fullLineItem {
-                SearchField(query = state.query, enabled = state.isSearchEnabled, onIntent = onIntent)
+                SearchField(
+                    query = state.query,
+                    placeholder = stringResource(R.string.note_list_search_placeholder),
+                    clearLabel = stringResource(R.string.note_list_search_clear),
+                    onQueryChange = { onIntent(NoteListIntent.QueryChanged(it)) },
+                    onClear = { onIntent(NoteListIntent.ClearQueryClicked) },
+                    fieldTestTag = NoteListTestTags.SEARCH_FIELD,
+                    clearTestTag = NoteListTestTags.SEARCH_CLEAR,
+                    enabled = state.isSearchEnabled,
+                )
             }
             fullLineItem {
                 Filters(selected = state.selectedFilter, isSearching = state.isSearching, onIntent = onIntent)
@@ -265,80 +267,6 @@ private fun NoteListHeader(
             )
         }
     }
-}
-
-/** Sin notas ([enabled] falso) el buscador se ve atenuado y no acepta texto. */
-@Composable
-private fun SearchField(
-    query: String,
-    enabled: Boolean,
-    onIntent: (NoteListIntent) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = NotesTheme.spacing
-    val colors = MaterialTheme.colorScheme
-    val textStyle = MaterialTheme.typography.bodyLarge
-    val hintColor = if (enabled) colors.onSurfaceVariant else colors.outlineVariant
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val placeholder = stringResource(R.string.note_list_search_placeholder)
-    BasicTextField(
-        value = query,
-        onValueChange = { onIntent(NoteListIntent.QueryChanged(it)) },
-        // El marcador hace de etiqueta del campo, también cuando ya tiene texto.
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag(NoteListTestTags.SEARCH_FIELD)
-            .semantics { contentDescription = placeholder },
-        enabled = enabled,
-        singleLine = true,
-        textStyle = textStyle.copy(color = colors.onBackground),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
-        cursorBrush = SolidColor(NotesTheme.accent.content),
-        decorationBox = { innerTextField ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(NotesTheme.sizes.searchHeight)
-                    .background(colors.surfaceContainer, RoundedCornerShape(NotesTheme.radii.pill))
-                    .padding(horizontal = spacing.l),
-                horizontalArrangement = Arrangement.spacedBy(spacing.m),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_search),
-                    contentDescription = null,
-                    tint = hintColor,
-                )
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    if (query.isEmpty()) {
-                        // Ya lo anuncia la etiqueta del campo: se oculta para no leerlo dos veces.
-                        Text(
-                            text = placeholder,
-                            modifier = Modifier.clearAndSetSemantics {},
-                            style = textStyle,
-                            color = hintColor,
-                        )
-                    }
-                    innerTextField()
-                }
-                if (query.isNotEmpty()) {
-                    IconButton(
-                        onClick = { onIntent(NoteListIntent.ClearQueryClicked) },
-                        modifier = Modifier
-                            .size(NotesTheme.sizes.imageAction)
-                            .testTag(NoteListTestTags.SEARCH_CLEAR),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_close),
-                            contentDescription = stringResource(R.string.note_list_search_clear),
-                            tint = colors.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        },
-    )
 }
 
 @Composable

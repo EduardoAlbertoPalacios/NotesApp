@@ -11,6 +11,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.notesapp.domain.notes.Note
 import com.example.notesapp.domain.notes.NoteCategory
+import com.example.notesapp.presentation.help.HelpRoute
 import com.example.notesapp.presentation.notes.editor.NoteEditorRoute
 import com.example.notesapp.presentation.notes.editor.NoteEditorViewModel
 import com.example.notesapp.presentation.notes.export.ExportNotesRoute
@@ -23,6 +24,7 @@ private object NotesDestinations {
     const val SETTINGS = "settings"
     const val EXPORT_NOTES = "settings/export"
     const val TRASH = "settings/trash"
+    const val HELP = "settings/help"
     const val NOTE_EDITOR = "notes/editor?" +
         "${NoteEditorViewModel.NOTE_ID_ARG}={${NoteEditorViewModel.NOTE_ID_ARG}}&" +
         "${NoteEditorViewModel.CATEGORY_ARG}={${NoteEditorViewModel.CATEGORY_ARG}}"
@@ -86,6 +88,7 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToExport = { navController.navigate(NotesDestinations.EXPORT_NOTES) },
                 onNavigateToTrash = { navController.navigate(NotesDestinations.TRASH) },
+                onNavigateToHelp = { navController.navigate(NotesDestinations.HELP) },
                 exportedCount = exportedCount,
                 missingImageCount = results[MISSING_IMAGE_COUNT_KEY] ?: 0,
                 onExportResultShown = {
@@ -108,6 +111,9 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
         }
         composable(NotesDestinations.TRASH) {
             TrashRoute(onNavigateBack = { navController.popBackStack() })
+        }
+        composable(NotesDestinations.HELP) {
+            HelpRoute(onNavigateBack = { navController.popBackStack() })
         }
     }
 }

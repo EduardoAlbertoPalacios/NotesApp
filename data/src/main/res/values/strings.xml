@@ -5,4 +5,31 @@
     <string name="export_pdf_untitled">Sin título</string>
     <string name="export_pdf_category_work">Trabajo</string>
     <string name="export_pdf_category_personal">Personal</string>
+
+    <!-- Preguntas frecuentes de la ayuda (spec 013, decisión D1), en el orden en que se muestran.
+         Llevan el prefijo help_faq_ para no chocar con los recursos de :presentation al fusionarse en :app. -->
+    <string name="help_faq_1_question">¿Dónde se guardan mis notas?</string>
+    <string name="help_faq_1_answer">Tus notas se guardan en este dispositivo. Para tener una copia, ve a Ajustes → Exportar notas.</string>
+    <string name="help_faq_2_question">¿Cómo recupero una nota eliminada?</string>
+    <string name="help_faq_2_answer">Al eliminar una nota, pasa a la papelera. Toca «Deshacer» en el aviso que aparece, o ve a Ajustes → Papelera, toca la nota y elige «Restaurar». Las notas de la papelera se eliminan definitivamente cuando se cumple el plazo de «Vaciar automáticamente» (30 días si no lo cambias).</string>
+    <string name="help_faq_3_question">¿Cómo cambio el color de mis notas?</string>
+    <string name="help_faq_3_answer">En la nota, toca «Color de la nota» en la barra inferior, elige un color y toca «Aplicar color». Para elegir el color de las notas nuevas, ve a Ajustes → Color predeterminado.</string>
+    <string name="help_faq_4_question">¿Cómo organizo mis notas por categoría?</string>
+    <string name="help_faq_4_answer">En la nota, elige Trabajo o Personal en la sección «Categoría». En Mis notas, usa los filtros Todas, Trabajo y Personal.</string>
+    <string name="help_faq_5_question">¿Cómo fijo una nota?</string>
+    <string name="help_faq_5_answer">En la nota, toca «Fijar nota» en la barra superior. Para quitarla, toca «Dejar de fijar nota».</string>
+    <string name="help_faq_6_question">¿Cómo creo una lista de tareas?</string>
+    <string name="help_faq_6_answer">En la nota, toca «Lista de tareas» en la barra inferior. Toca la casilla de una tarea para marcarla como hecha.</string>
+    <string name="help_faq_7_question">¿Cómo doy formato al texto?</string>
+    <string name="help_faq_7_answer">En la nota, toca «Formato de texto» en la barra inferior y elige negrita, subrayado o tachado.</string>
+    <string name="help_faq_8_question">¿Puedo deshacer un cambio?</string>
+    <string name="help_faq_8_answer">Sí. En la nota, toca «Deshacer» en la barra inferior. Los cambios que puedes deshacer se pierden al salir de la nota.</string>
+    <string name="help_faq_9_question">¿Se guardan mis cambios automáticamente?</string>
+    <string name="help_faq_9_answer">Sí, mientras el guardado automático esté activado, que es lo predeterminado. Si lo desactivas en Ajustes → Guardado automático, toca «Guardar» antes de salir de la nota.</string>
+    <string name="help_faq_10_question">¿Cómo comparto una nota?</string>
+    <string name="help_faq_10_answer">En la nota, toca «Compartir nota» en la barra superior y elige la app con la que compartirla. Se comparten el título, el texto y las imágenes.</string>
+    <string name="help_faq_11_question">¿Cómo exporto mis notas?</string>
+    <string name="help_faq_11_answer">Ve a Ajustes → Exportar notas, elige las notas y toca «Exportar». Se guarda un archivo .zip con un PDF por nota en la carpeta que elijas.</string>
+    <string name="help_faq_12_question">¿Cómo cambio entre tema claro y oscuro?</string>
+    <string name="help_faq_12_answer">Ve a Ajustes → Tema y elige Claro u Oscuro.</string>
 </resources>

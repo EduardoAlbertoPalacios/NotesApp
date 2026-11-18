@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Estrella de valoración de la ayuda (spec 013, Figma «Estrella de valoración» 107:3). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="21dp"
+    android:height="21dp"
+    android:viewportWidth="21"
+    android:viewportHeight="21">
+    <path
+        android:pathData="M10.50,2.00 L12.62,8.09 L19.06,8.22 L13.92,12.11 L15.79,18.28 L10.50,14.60 L5.21,18.28 L7.08,12.11 L1.94,8.22 L8.38,8.09 Z"
+        android:strokeWidth="1.8"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineJoin="round" />
+</vector>

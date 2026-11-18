@@ -1,6 +1,5 @@
 package com.example.notesapp.presentation.settings
 
-import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -8,11 +7,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,9 +18,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -33,26 +27,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.disabled
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.notesapp.domain.notes.NoteColor
 import com.example.notesapp.domain.settings.NotesView
 import com.example.notesapp.domain.settings.ThemeMode
 import com.example.notesapp.presentation.R
+import com.example.notesapp.presentation.common.Chevron
+import com.example.notesapp.presentation.common.GroupDivider
+import com.example.notesapp.presentation.common.SettingsGroup
+import com.example.notesapp.presentation.common.SettingsRow
+import com.example.notesapp.presentation.common.SettingsTopBar
 import com.example.notesapp.presentation.notes.common.NoteColorPickerSheet
 import com.example.notesapp.presentation.notes.common.labelRes
-import com.example.notesapp.presentation.theme.DisabledAlpha
 import com.example.notesapp.presentation.theme.NotesAppTheme
 import com.example.notesapp.presentation.theme.NotesTheme
 
@@ -87,7 +79,12 @@ fun SettingsScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-            SettingsTopBar(onBack = { onIntent(SettingsIntent.BackClicked) })
+            SettingsTopBar(
+                title = stringResource(R.string.settings_title),
+                backLabel = stringResource(R.string.settings_back),
+                onBack = { onIntent(SettingsIntent.BackClicked) },
+                backTestTag = SettingsTestTags.BACK,
+            )
             SettingsContent(state = state, appVersion = appVersion, onIntent = onIntent)
         }
         SnackbarHost(
@@ -110,35 +107,6 @@ fun SettingsScreen(
             onColorSelected = { onIntent(SettingsIntent.DefaultColorOptionSelected(it)) },
             onApply = { onIntent(SettingsIntent.DefaultColorApplied) },
             onDismiss = { onIntent(SettingsIntent.DefaultColorPickerDismissed) },
-        )
-    }
-}
-
-@Composable
-private fun SettingsTopBar(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(NotesTheme.sizes.topBarHeight)
-            .padding(horizontal = NotesTheme.spacing.l),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(NotesTheme.spacing.s),
-    ) {
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.size(NotesTheme.sizes.iconAction).testTag(SettingsTestTags.BACK),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_arrow_left),
-                contentDescription = stringResource(R.string.settings_back),
-                modifier = Modifier.size(NotesTheme.sizes.settingsBackIcon),
-                tint = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-        Text(
-            text = stringResource(R.string.settings_title),
-            style = NotesTheme.typography.settingsTitle,
-            color = MaterialTheme.colorScheme.onBackground,
         )
     }
 }
@@ -188,12 +156,7 @@ private fun SettingsContent(
             TrashRow(trashCount = state.trashCount, onClick = { onIntent(SettingsIntent.TrashRowClicked) })
         }
         SettingsGroup(titleRes = R.string.settings_section_about) {
-            DisabledRow(
-                iconRes = R.drawable.ic_help,
-                titleRes = R.string.settings_help,
-                detailRes = R.string.settings_help_detail,
-                testTag = SettingsTestTags.HELP_ROW,
-            )
+            HelpRow(onClick = { onIntent(SettingsIntent.HelpRowClicked) })
         }
         Text(
             text = stringResource(R.string.settings_version, appVersion),
@@ -242,41 +205,6 @@ private fun PrivacyNotice(modifier: Modifier = Modifier) {
             )
         }
     }
-}
-
-@Composable
-private fun SettingsGroup(
-    @StringRes titleRes: Int,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(NotesTheme.spacing.sm),
-    ) {
-        Text(
-            text = stringResource(titleRes).uppercase(),
-            style = NotesTheme.typography.settingsSection,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(NotesTheme.radii.card))
-                .background(MaterialTheme.colorScheme.surfaceContainer),
-        ) {
-            content()
-        }
-    }
-}
-
-@Composable
-private fun GroupDivider(modifier: Modifier = Modifier) {
-    HorizontalDivider(
-        modifier = modifier,
-        thickness = NotesTheme.sizes.border,
-        color = MaterialTheme.colorScheme.outlineVariant,
-    )
 }
 
 @Composable
@@ -350,6 +278,21 @@ private fun ExportRow(onClick: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
+/** Ayuda y comentarios (spec 013, RF-1, RF-2). */
+@Composable
+private fun HelpRow(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    SettingsRow(
+        iconRes = R.drawable.ic_help,
+        titleRes = R.string.settings_help,
+        detail = stringResource(R.string.settings_help_detail),
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(SettingsTestTags.HELP_ROW),
+    ) {
+        Chevron()
+    }
+}
+
 /** Papelera (spec 012): «N notas» o «Vacía»; sin descripción si no se pudo leer la papelera (RF-10, RF-11). */
 @Composable
 private fun TrashRow(trashCount: Int?, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -383,99 +326,6 @@ private fun AutoSaveRow(isEnabled: Boolean, onToggle: () -> Unit, modifier: Modi
     ) {
         SettingsSwitch(checked = isEnabled)
     }
-}
-
-/**
- * Fila atenuada y sin acción. [valueRes] es lo que se muestra a la derecha.
- */
-@Composable
-private fun DisabledRow(
-    @DrawableRes iconRes: Int,
-    @StringRes titleRes: Int,
-    @StringRes detailRes: Int,
-    testTag: String,
-    modifier: Modifier = Modifier,
-    @StringRes valueRes: Int? = null,
-) {
-    val value = valueRes?.let { stringResource(it) }
-    val description = listOfNotNull(stringResource(titleRes), stringResource(detailRes), value).joinToString()
-    SettingsRow(
-        iconRes = iconRes,
-        titleRes = titleRes,
-        detail = stringResource(detailRes),
-        modifier = modifier
-            .alpha(DisabledAlpha)
-            .clearAndSetSemantics {
-                this.testTag = testTag
-                contentDescription = description
-                disabled()
-            },
-    ) {
-        if (value != null) {
-            Text(
-                text = value,
-                style = NotesTheme.typography.settingsValue,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Chevron()
-    }
-}
-
-@Composable
-private fun SettingsRow(
-    @DrawableRes iconRes: Int,
-    @StringRes titleRes: Int,
-    detail: String,
-    modifier: Modifier = Modifier,
-    trailing: @Composable RowScope.() -> Unit,
-) {
-    val colors = MaterialTheme.colorScheme
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = NotesTheme.sizes.settingsRow)
-            .padding(horizontal = NotesTheme.spacing.l, vertical = NotesTheme.spacing.m),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(NotesTheme.spacing.ml),
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            modifier = Modifier.size(NotesTheme.sizes.settingsRowIcon),
-            tint = NotesTheme.accent.content,
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(NotesTheme.spacing.xs),
-        ) {
-            Text(
-                text = stringResource(titleRes),
-                style = NotesTheme.typography.settingsRowTitle,
-                color = colors.onBackground,
-            )
-            Text(
-                text = detail,
-                style = NotesTheme.typography.settingsRowDetail,
-                color = colors.onSurfaceVariant,
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(NotesTheme.spacing.xsm),
-            content = trailing,
-        )
-    }
-}
-
-@Composable
-private fun Chevron(modifier: Modifier = Modifier) {
-    Icon(
-        painter = painterResource(R.drawable.ic_chevron_right),
-        contentDescription = null,
-        modifier = modifier.size(NotesTheme.sizes.settingsChevron),
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 /** Interruptor del diseño (42 × 26 dp): el `Switch` de Material no admite ese tamaño. Solo dibuja; la fila lo cambia. */

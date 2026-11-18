@@ -84,6 +84,7 @@ class SettingsViewModel @Inject constructor(
             SettingsIntent.AutoSaveToggled -> toggleAutoSave()
             SettingsIntent.ExportRowClicked -> send(SettingsEffect.NavigateToExport)
             SettingsIntent.TrashRowClicked -> send(SettingsEffect.NavigateToTrash)
+            SettingsIntent.HelpRowClicked -> send(SettingsEffect.NavigateToHelp)
             is SettingsIntent.ExportFinished -> {
                 // RF-20, RF-45: un aviso tras otro; la cola de avisos los muestra en orden.
                 send(SettingsEffect.ShowExportDone(intent.exportedCount))

@@ -1,9 +1,11 @@
 package com.example.notesapp.data.di
 
 import com.example.notesapp.data.export.PdfNotesExporter
+import com.example.notesapp.data.help.FaqRepositoryImpl
 import com.example.notesapp.data.images.ImageStorageImpl
 import com.example.notesapp.data.notes.NoteRepositoryImpl
 import com.example.notesapp.data.settings.SettingsRepositoryImpl
+import com.example.notesapp.domain.help.FaqRepository
 import com.example.notesapp.domain.notes.ImageStorage
 import com.example.notesapp.domain.notes.NoteRepository
 import com.example.notesapp.domain.notes.export.NotesExporter
@@ -28,4 +30,7 @@ internal abstract class RepositoryModule {
 
     @Binds
     abstract fun bindNotesExporter(impl: PdfNotesExporter): NotesExporter
+
+    @Binds
+    abstract fun bindFaqRepository(impl: FaqRepositoryImpl): FaqRepository
 }

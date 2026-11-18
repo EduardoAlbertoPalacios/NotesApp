@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.notesapp.common.result.AppResult
 import com.example.notesapp.domain.notes.Note
@@ -65,6 +66,9 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
     @Volatile
     private var navigateToTrashCalls = 0
 
+    @Volatile
+    private var navigateToHelpCalls = 0
+
     private fun setFailingSaveContent() = setRouteContent()
 
     private fun setRouteContent(
@@ -95,6 +99,7 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
                     onNavigateBack = { navigateBackCalls++ },
                     onNavigateToExport = {},
                     onNavigateToTrash = { navigateToTrashCalls++ },
+                    onNavigateToHelp = { navigateToHelpCalls++ },
                     exportedCount = exportedCount,
                     missingImageCount = missingImageCount,
                     onExportResultShown = { exportResultShownCalls++ },
@@ -338,6 +343,18 @@ class SettingsRouteTest(private val darkTheme: Boolean) {
         composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) { navigateToTrashCalls > 0 }
 
         assertEquals(1, navigateToTrashCalls)
+    }
+
+    @Test
+    fun given_settings_when_help_row_clicked_then_navigates_to_help() {
+        setRouteContent()
+
+        row(SettingsTestTags.HELP_ROW).performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = TIMEOUT_MS) { navigateToHelpCalls > 0 }
+
+        assertEquals(1, navigateToHelpCalls)
+        assertEquals(0, navigateToTrashCalls)
+        assertEquals(0, navigateBackCalls)
     }
 
     private fun trashCount(count: Int): String = InstrumentationRegistry.getInstrumentation().targetContext
