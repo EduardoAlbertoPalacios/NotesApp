@@ -964,6 +964,20 @@ class SettingsViewModelTest {
         assertEquals(stateBefore, viewModel.state.value)
     }
 
+    @Test
+    fun `given settings when help row clicked then navigates to help without changing state`() = runTest {
+        val viewModel = createViewModelWithTheme(ThemeMode.DARK)
+        val stateBefore = viewModel.state.value
+
+        viewModel.effects.test {
+            viewModel.onIntent(SettingsIntent.HelpRowClicked)
+
+            assertEquals(SettingsEffect.NavigateToHelp, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(stateBefore, viewModel.state.value)
+    }
+
     private fun trashed(id: Long) = TrashedNote(
         note = Note(
             id = id,

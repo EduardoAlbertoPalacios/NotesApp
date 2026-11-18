@@ -4,6 +4,7 @@ sealed interface SettingsEffect {
     data object NavigateBack : SettingsEffect
     data object NavigateToExport : SettingsEffect
     data object NavigateToTrash : SettingsEffect
+    data object NavigateToHelp : SettingsEffect
     data class ShowExportDone(val exportedCount: Int) : SettingsEffect
     data object ShowExportMissingImages : SettingsEffect
     data object ShowThemeSaveError : SettingsEffect

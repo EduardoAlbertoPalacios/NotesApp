@@ -14,11 +14,9 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -113,6 +111,7 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
                             SettingsIntent.AutoSaveToggled -> state.copy(isAutoSaveEnabled = !state.isAutoSaveEnabled)
                             SettingsIntent.ExportRowClicked -> state
                             SettingsIntent.TrashRowClicked -> state
+                            SettingsIntent.HelpRowClicked -> state
                             is SettingsIntent.ExportFinished -> state
                         }
                     },
@@ -162,9 +161,8 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         row(SettingsTestTags.NOTES_VIEW_ROW).assert(hasText(string(R.string.settings_notes_view)))
         row(SettingsTestTags.AUTO_SAVE_ROW).assert(hasText(string(R.string.settings_auto_save)))
         row(SettingsTestTags.EXPORT_ROW).assert(hasText(string(R.string.settings_export)))
-        disabledRowDescriptions.forEach { (tag, description) ->
-            row(tag).assertContentDescriptionEquals(description)
-        }
+        row(SettingsTestTags.TRASH_ROW).assert(hasText(string(R.string.settings_trash)))
+        row(SettingsTestTags.HELP_ROW).assert(hasText(string(R.string.settings_help)))
     }
 
     @Test
@@ -179,24 +177,35 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
     }
 
     @Test
-    fun given_settings_when_displayed_then_unavailable_rows_are_disabled_and_have_no_click_action() {
+    fun given_help_row_when_displayed_then_is_enabled_button_with_title_and_detail() {
         setContent()
 
-        disabledRowDescriptions.keys.forEach { tag ->
-            row(tag).assertIsNotEnabled().assertHasNoClickAction()
-        }
+        row(SettingsTestTags.HELP_ROW)
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assert(hasRole(Role.Button))
+            .assert(hasText(string(R.string.settings_help)))
+            .assert(hasText(string(R.string.settings_help_detail)))
+            .assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            .assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription))
     }
 
     @Test
-    fun given_unavailable_rows_when_clicked_then_sends_no_intent() {
+    fun given_help_row_when_clicked_then_sends_help_row_clicked() {
         setContent()
 
-        disabledRowDescriptions.keys.forEach { tag ->
-            row(tag).performScrollTo().performClick()
-        }
-        composeRule.waitForIdle()
+        row(SettingsTestTags.HELP_ROW).performScrollTo().performClick()
 
-        assertTrue(intents.isEmpty())
+        assertEquals(listOf<SettingsIntent>(SettingsIntent.HelpRowClicked), intents)
+    }
+
+    @Test
+    fun given_help_row_when_displayed_then_touch_target_is_at_least_44_dp() {
+        setContent()
+
+        row(SettingsTestTags.HELP_ROW).assertWidthIsAtLeast(MIN_TOUCH_TARGET).assertHeightIsAtLeast(MIN_TOUCH_TARGET)
     }
 
     @Test
@@ -1129,13 +1138,6 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
         NoteColor.PEACH to R.string.note_color_peach,
         NoteColor.SAND to R.string.note_color_sand,
     )
-
-    private val disabledRowDescriptions
-        get() = mapOf(
-            SettingsTestTags.HELP_ROW to description(R.string.settings_help, R.string.settings_help_detail),
-        )
-
-    private fun description(vararg ids: Int): String = ids.joinToString { string(it) }
 
     private fun openSheetState() = SettingsUiState(themeMode = activeMode, isThemeSheetVisible = true)
 

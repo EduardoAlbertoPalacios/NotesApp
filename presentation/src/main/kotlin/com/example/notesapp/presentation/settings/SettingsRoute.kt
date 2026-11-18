@@ -25,6 +25,7 @@ fun SettingsRoute(
     onNavigateBack: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToTrash: () -> Unit,
+    onNavigateToHelp: () -> Unit,
     modifier: Modifier = Modifier,
     exportedCount: Int? = null,
     missingImageCount: Int = 0,
@@ -40,6 +41,7 @@ fun SettingsRoute(
     val currentOnNavigateBack by rememberUpdatedState(onNavigateBack)
     val currentOnNavigateToExport by rememberUpdatedState(onNavigateToExport)
     val currentOnNavigateToTrash by rememberUpdatedState(onNavigateToTrash)
+    val currentOnNavigateToHelp by rememberUpdatedState(onNavigateToHelp)
     val currentOnExportResultShown by rememberUpdatedState(onExportResultShown)
     val context = LocalContext.current
 
@@ -57,6 +59,7 @@ fun SettingsRoute(
                 SettingsEffect.NavigateBack -> currentOnNavigateBack()
                 SettingsEffect.NavigateToExport -> currentOnNavigateToExport()
                 SettingsEffect.NavigateToTrash -> currentOnNavigateToTrash()
+                SettingsEffect.NavigateToHelp -> currentOnNavigateToHelp()
                 is SettingsEffect.ShowExportDone -> launch {
                     val count = effect.exportedCount
                     snackbarHostState.showSnackbar(context.resources.getQuantityString(R.plurals.export_done, count, count))

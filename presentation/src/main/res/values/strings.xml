@@ -198,4 +198,19 @@
     </plurals>
     <string name="trash_retention_confirm">Cambiar</string>
     <string name="trash_retention_save_error">No se pudo guardar el plazo</string>
+    <!-- Ayuda y comentarios (spec 013). Las preguntas y respuestas viven en :data (help_faq_N_*). -->
+    <string name="help_title">Ayuda y comentarios</string>
+    <string name="help_back">Volver</string>
+    <string name="help_header_title">¿En qué podemos ayudarte?</string>
+    <string name="help_header_detail">Un poco de ayuda para que tus ideas sigan fluyendo.</string>
+    <string name="help_search_placeholder">Buscar una pregunta</string>
+    <string name="help_search_clear">Limpiar búsqueda</string>
+    <string name="help_section_faqs">Preguntas frecuentes</string>
+    <string name="help_no_results">No hay preguntas que coincidan con «%1$s»</string>
+    <string name="help_section_rate">Valora la app</string>
+    <string name="help_rate">Calificar en Google Play</string>
+    <string name="help_rate_detail">Comparte tu experiencia con la app</string>
+    <string name="help_rate_note">Se abrirá Google Play para dejar tu reseña.</string>
+    <string name="help_question_expanded">Abierta</string>
+    <string name="help_question_collapsed">Cerrada</string>
 </resources>
