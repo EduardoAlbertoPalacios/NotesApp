@@ -120,7 +120,7 @@ Tareas en orden de dependencia: cada una solo necesita las anteriores. Las prueb
   - **Cubre:** —
   - **Hecho cuando:** el archivo refleja la spec 013.
 
-- [ ] **T15. Commit y PR** (con tu confirmación).
+- [x] **T15. Commit y PR** (con tu confirmación).
   - Marcar spec, plan y tareas como implementados.
   - Hacer el commit con Conventional Commits.
   - Subir la rama y abrir el PR hacia `main`.
