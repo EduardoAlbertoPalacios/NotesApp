@@ -8,9 +8,9 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Editor** (`presentation/notes/editor`, Figma `4:1656`): crear, editar, fijar y eliminar; contenido con negrita, subrayado y tachado.
 - **Categorías** Trabajo / Personal: se eligen en el editor (sección "Categoría", Figma `14:4`) y filtran el listado.
 - **Imágenes**: varias por nota, desde el botón Imagen de la barra de edición (PR #1, en `main`).
-- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005), color predeterminado (007, PR #8), vista de notas (008, PR #9) y guardado automático activable (009, PR #10) y compartir nota (010, PR #11), exportar notas (011, PR #12) y papelera (012, PR #13). Todas las filas de Ajustes funcionan.
+- En `main`: búsqueda (spec 001), formato de texto (002), color de la nota (003), lista de tareas (004), deshacer (005), color predeterminado (007, PR #8), vista de notas (008, PR #9) y guardado automático activable (009, PR #10) y compartir nota (010, PR #11), exportar notas (011, PR #12), papelera (012, PR #13) y ayuda y comentarios (013, PR #14). Todas las filas de Ajustes funcionan.
 - **Ajustes y tema claro/oscuro** (spec 006, PR #7), en `main`. API 30 queda pendiente por decisión del usuario. El tema se guarda con DataStore Preferences (solo en `:data`).
-- **Ayuda y comentarios** (spec 013): implementada en `feat/help-feedback`, PR pendiente. 12 preguntas frecuentes con buscador y acordeón (varias abiertas); «Calificar en Google Play» deshabilitada hasta publicar la app.
+- **Icono y nombre «Notelet»** (spec 014): implementada en `feat/app-icon-name`, PR pendiente. «Calificar en Google Play» (013) sigue deshabilitada hasta publicar la app.
 
 ## Decisiones (y por qué)
 - Clean Architecture + MVI con 5 módulos: separar responsabilidades y probar cada capa.
@@ -31,6 +31,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Guardado automático: ajuste en `SettingsRepository` (encendido por defecto). El editor elige modo al abrir. Manual: nada toca la base hasta Guardar; imágenes nuevas se copian ya pero se asocian al guardar (`NoteDao.saveChanges`, una transacción); borrador en `SavedStateHandle` (sobrevive a la muerte del proceso, no al cierre desde recientes; 100 000 caracteres ≈ 210 KB). `CleanUpImageFilesUseCase` al salir del editor compara por nombre de archivo, nunca por ruta.
 - Papelera: columna nula `trashed_at` (v7, `AutoMigration(6,7)`); el guardado usa la entidad parcial `NoteContentUpdate` para no tocarla (D1). Días en bloques de 24 h (`TrashRules`). Las vencidas se ocultan en `GetTrashUseCase` y se borran al arrancar (`AppStartupViewModel` en `MainActivity`, D4). `deleteAllByIds` borra en bloques de 900 por el límite de 999 parámetros de SQLite antiguo. Acortar el plazo pide confirmar si borra notas (`ChangeTrashRetentionUseCase`). `SettingsOptionSheet` y `ConfirmDialog` viven en `presentation/common`.
 - Ayuda: las preguntas son recursos de `:data` (`help_faq_N_*`) servidos por `FaqRepository` (D1); `FaqSearch` reutiliza `NoteTextMatcher` (mismas reglas que la búsqueda de notas, D2). `SearchField` y los componentes de Ajustes (`SettingsTopBar`, `SettingsGroup`, `SettingsRow`, `DisabledRow`, `Chevron`, `GroupDivider`) viven en `presentation/common`. Si cambia una función, revisar su respuesta en la ayuda.
+- Icono: recursos adaptables del usuario copiados tal cual (con `monochrome`). Android 7.x usa vectores en `mipmap-anydpi` (sin PNG: no hay herramientas para rasterizar SVG). «Notelet» está en `app_name` (`:app`) y en `settings_version` (`:presentation`), cubiertos por pruebas.
 - Formato: el contenido sigue en texto plano y el formato va aparte como tramos `FormatSpan` en la columna `content_spans` (codificación propia `start,end,F;…`, sin dependencias). Reglas en `NoteFormatting` (`:domain`); el editor pinta con `VisualTransformation`. Los formatos activados sin escribir no se guardan ni cambian la fecha.
 
 ## Aprendizajes y errores a evitar
@@ -46,6 +47,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Compose puede cortar la línea entre una casilla en línea (`InlineTextContent`) y su texto, aunque se use `WORD JOINER` y espacios sin corte: hay que medir y poner los saltos a mano.
 - macOS: el `unzip` de la terminal no abre nombres UTF-8 (el .zip está bien, flag `0x800`); extraer con `zipfile` de Python. Renderizar páginas de PDF con PDFKit en un script `swift`.
 - `adb` no está en PATH: `~/Library/Android/sdk/platform-tools/adb`. El emulador está en inglés (fechas «12 Nov 2026, 4:34 PM»). Figma plan Starter tiene límite de llamadas MCP: pedir pronto `get_design_context` y guardar el `get_metadata` (sirve de respaldo).
+- Emulador de Android 7.1: AVD `Notelet_API_25` (arm64). Lanzar emuladores con `nohup … &` y `-port`; si no, se cierran. El Pixel físico suele estar conectado: siempre `ANDROID_SERIAL`. Pruebas instrumentadas: nombres con `_` (D8 no admite espacios bajo API 30) y `@SdkSuppress` en vez de `assumeTrue`.
 - Emulador: Mensajes solo tiene SMS y Drive pide cuenta; para imágenes compartidas, mirar en logcat que la app de destino las leyó.
 - Emulador: Atrás con el teclado cerrado sale del editor (y descarta el historial de deshacer). El emulador tiene teclado físico: Gboard solo muestra su barra flotante (tapa la izquierda), así que la escritura con teclado en pantalla no se puede probar ahí.
 
@@ -53,6 +55,5 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Corregir el error de lint preexistente: `NoteEditorRoute.kt:50` (`LocalContextGetResourceValueCall`).
 - Spec 005: comprobar en un móvil con teclado en pantalla que escribir se agrupa por palabra (confirmar una sugerencia es paso propio).
 - Nota vaciada (a mano o deshaciendo) tras autoguardarse: `leave()` mira la última versión guardada y no la borra; vuelve a Mis notas con su texto anterior. Preexistente; candidato a spec.
-- Comprobar spec 006 en API 30 (ventana inicial, RF-40) y API 24-25 (barra de navegación en Claro).
-- Unificar el nombre de la app: el pie de Ajustes dice «Notas» y `app_name`, «NotesApp».
+- Comprobar spec 006 en API 30 (ventana inicial, RF-40) y en API 25 con `Notelet_API_25` (barra de navegación en Claro).
 - Candidato a spec: `allowBackup` y las reglas sin configurar podrían copiar las notas a la nube, frente al aviso «Tus notas se guardan en este dispositivo».
