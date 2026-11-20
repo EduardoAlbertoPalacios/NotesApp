@@ -177,6 +177,16 @@ class SettingsScreenTest(private val darkTheme: Boolean) {
     }
 
     @Test
+    fun given_app_version_when_displayed_then_footer_shows_notelet_name_and_version() {
+        setContent(appVersion = APP_VERSION)
+
+        row(SettingsTestTags.VERSION)
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertTextEquals("Notelet · Versión 9.8.7-test")
+    }
+
+    @Test
     fun given_help_row_when_displayed_then_is_enabled_button_with_title_and_detail() {
         setContent()
 
