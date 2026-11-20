@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de Notelet para Android 7.0 y 7.1, que no usan iconos adaptables (spec 014, D2). En Android 8 o superior
+     manda mipmap-anydpi-v26. Fondo: círculo de 44 dp. El dibujo son los mismos trazados de drawable/ic_launcher_foreground.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <path
+        android:fillColor="@color/ic_launcher_background"
+        android:pathData="M36,3A33,33 0,1 1,36 69A33,33 0,1 1,36 3Z" />
+    <!-- Escala la zona visible del icono adaptable (18 a 90 de la cuadrícula de 108) al tamaño del fondo. -->
+    <group
+        android:pivotX="36"
+        android:pivotY="36"
+        android:scaleX="0.9167"
+        android:scaleY="0.9167">
+        <group
+            android:translateX="-18"
+            android:translateY="-18">
+            <!-- Página -->
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M41.76,30.96H66.24A6.48,6.48 0,0 1,72.72 37.44V70.56A6.48,6.48 0,0 1,66.24 77.04H41.76A6.48,6.48 0,0 1,35.28 70.56V37.44A6.48,6.48 0,0 1,41.76 30.96Z" />
+            <!-- Marcador -->
+            <path
+                android:fillColor="#1F2937"
+                android:pathData="M58.32,30.96H66.96V48.24L62.64,44.28L58.32,48.24Z" />
+            <!-- Línea 1 -->
+            <path
+                android:fillColor="#1F2937"
+                android:pathData="M42.66,54H63.9A1.62,1.62 0,0 1,63.9 57.24H42.66A1.62,1.62 0,0 1,42.66 54Z" />
+            <!-- Línea 2 -->
+            <path
+                android:fillColor="#C9CDD3"
+                android:pathData="M42.66,61.2H63.9A1.62,1.62 0,0 1,63.9 64.44H42.66A1.62,1.62 0,0 1,42.66 61.2Z" />
+            <!-- Línea 3 -->
+            <path
+                android:fillColor="#C9CDD3"
+                android:pathData="M42.66,68.4H53.82A1.62,1.62 0,0 1,53.82 71.64H42.66A1.62,1.62 0,0 1,42.66 68.4Z" />
+        </group>
+    </group>
+</vector>

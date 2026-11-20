@@ -115,7 +115,7 @@
     <string name="settings_trash">Papelera</string>
     <string name="settings_help">Ayuda y comentarios</string>
     <string name="settings_help_detail">Nos encanta escucharte</string>
-    <string name="settings_version">Notas · Versión %1$s</string>
+    <string name="settings_version">Notelet · Versión %1$s</string>
     <!-- Exportar notas (spec 011) -->
     <string name="export_title">Exportar notas</string>
     <string name="export_back">Volver</string>
