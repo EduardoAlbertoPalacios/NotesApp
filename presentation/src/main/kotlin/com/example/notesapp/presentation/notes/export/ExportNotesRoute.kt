@@ -37,7 +37,8 @@ fun ExportNotesRoute(
         viewModel.onIntent(ExportNotesIntent.DestinationPicked(uri?.toString()))
     }
 
-    BackHandler { viewModel.onIntent(ExportNotesIntent.BackClicked) }
+    // Solo con una exportación en curso: si no, Atrás lo atiende `NavHost` con la vista previa del gesto.
+    BackHandler(enabled = state.interceptsBack) { viewModel.onIntent(ExportNotesIntent.BackClicked) }
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
