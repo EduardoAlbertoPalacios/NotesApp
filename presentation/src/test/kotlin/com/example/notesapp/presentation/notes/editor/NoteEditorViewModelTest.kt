@@ -3789,6 +3789,628 @@ class NoteEditorViewModelTest {
         }
     }
 
+    // --- Atrás interceptado (spec 015, RF-14 a RF-16) ---
+
+    @Test
+    fun `given new empty note when created then does not intercept back`() = runTest {
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given existing note loaded with nothing pending when created then does not intercept back`() = runTest {
+        repository.notes[existing.id] = existing
+
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given missing note when created then does not intercept back`() = runTest {
+        val viewModel = createViewModel(noteId = 99)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given typing in autosave mode when debounce has not elapsed then intercepts back`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.typeInTitle("!")
+        advanceTimeBy(NoteEditorViewModel.AUTOSAVE_DELAY_MS - 1)
+        runCurrent()
+
+        assertTrue(viewModel.state.value.interceptsBack)
+        assertEquals(0, repository.saveCount)
+    }
+
+    @Test
+    fun `given typing in new note in autosave mode when debounce has not elapsed then intercepts back`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.typeInTitle("Ide")
+
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given typing in autosave mode when autosave completes then stops intercepting back`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.typeInTitle("!")
+        advanceUntilIdle()
+
+        assertEquals(SaveStatus.Saved, viewModel.state.value.saveStatus)
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given autosave in progress when checked then intercepts back until the save ends`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        repository.saveNoteGate = gate
+        viewModel.typeInTitle("!")
+        advanceTimeBy(NoteEditorViewModel.AUTOSAVE_DELAY_MS)
+        runCurrent()
+
+        assertEquals(SaveStatus.Saving, viewModel.state.value.saveStatus)
+        assertTrue(viewModel.state.value.interceptsBack)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(SaveStatus.Saved, viewModel.state.value.saveStatus)
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given one tap change in autosave mode when saved right away then intercepts back until the save ends`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+            val gate = CompletableDeferred<Unit>()
+            repository.saveNoteGate = gate
+
+            viewModel.onIntent(NoteEditorIntent.PinClicked)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.interceptsBack)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.interceptsBack)
+        }
+
+    @Test
+    fun `given image being copied in autosave mode when checked then intercepts back until the copy ends`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        imageStorage.saveGate = gate
+
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+
+        assertTrue(viewModel.state.value.interceptsBack)
+        runCurrent()
+        assertTrue(viewModel.state.value.interceptsBack)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.state.value.images.size)
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given image being removed in autosave mode when checked then intercepts back until the removal ends`() =
+        runTest {
+            repository.notes[existing.id] = existing.copy(images = listOf(imageA))
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+
+            viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+
+            assertTrue(viewModel.state.value.interceptsBack)
+
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.images.isEmpty())
+            assertFalse(viewModel.state.value.interceptsBack)
+        }
+
+    @Test
+    fun `given note created by adding an image when the image is removed then intercepts back`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+        assertFalse(viewModel.state.value.interceptsBack)
+
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(viewModel.state.value.images.single()))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given manual mode with nothing pending when opened then does not intercept back`() = runTest {
+        val viewModel = openManually()
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given manual mode when text typed then intercepts back`() = runTest {
+        val viewModel = openManually()
+
+        viewModel.typeInTitle("!")
+
+        assertTrue(viewModel.state.value.hasUnsavedChanges)
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given manual mode with unsaved text when saved then stops intercepting back`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.hasUnsavedChanges)
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given manual mode with unsaved text when text is reverted then stops intercepting back`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+
+        viewModel.onIntent(NoteEditorIntent.TitleChanged(TextFieldValue(existing.title)))
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given manual save in progress when checked then intercepts back until the save ends`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        val gate = CompletableDeferred<Unit>()
+        repository.saveChangesGate = gate
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        runCurrent()
+
+        assertEquals(SaveStatus.Saving, viewModel.state.value.saveStatus)
+        assertTrue(viewModel.state.value.interceptsBack)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given image being copied in manual mode when copy ends then intercepts back for the pending image`() =
+        runTest {
+            val viewModel = openManually()
+            val gate = CompletableDeferred<Unit>()
+            imageStorage.saveGate = gate
+
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.hasUnsavedChanges)
+            assertTrue(viewModel.state.value.interceptsBack)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.hasUnsavedChanges)
+            assertTrue(viewModel.state.value.interceptsBack)
+        }
+
+    @Test
+    fun `given pending image in manual mode when saved then stops intercepting back`() = runTest {
+        val viewModel = openManually()
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+
+        viewModel.onIntent(NoteEditorIntent.SaveClicked)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given pending image in manual mode when it is removed then intercepts back until its copy is discarded`() =
+        runTest {
+            val viewModel = openManually()
+            viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+            advanceUntilIdle()
+
+            viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(viewModel.state.value.images.single()))
+
+            assertFalse(viewModel.state.value.hasUnsavedChanges)
+            assertTrue(viewModel.state.value.interceptsBack)
+            assertFalse(copyOf(URI_A) in imageStorage.deletedPaths)
+
+            runCurrent()
+
+            assertTrue(copyOf(URI_A) in imageStorage.deletedPaths)
+            assertFalse(viewModel.state.value.interceptsBack)
+        }
+
+    @Test
+    fun `given saved image removed in manual mode when checked then intercepts back`() = runTest {
+        val viewModel = openManually(existing.copy(images = listOf(imageA)))
+
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(imageA))
+
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given restored draft in manual mode when opened then intercepts back`() = runTest {
+        val handle = savedStateHandle(existing.id)
+        EditorDraftCodec.write(
+            handle,
+            EditorDraft(
+                title = existing.title + "!",
+                content = existing.content,
+                contentSpans = emptyList(),
+                contentTasks = emptyList(),
+                isPinned = existing.isPinned,
+                category = existing.category,
+                color = existing.color,
+                pendingImagePaths = emptyList(),
+                removedImageIds = emptyList(),
+            ),
+        )
+
+        val viewModel = openManually(savedStateHandle = handle)
+
+        assertTrue(viewModel.state.value.hasUnsavedChanges)
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given leave dialog visible when checked then intercepts back`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        assertTrue(viewModel.state.value.isLeaveDialogVisible)
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given leave dialog with pending changes when dismissed then keeps intercepting back`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.onIntent(NoteEditorIntent.LeaveDialogDismissed)
+
+        assertFalse(viewModel.state.value.isLeaveDialogVisible)
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given leave dialog whose changes were undone when dismissed then stops intercepting back`() = runTest {
+        val viewModel = openManually()
+        viewModel.onIntent(NoteEditorIntent.ImagesPicked(listOf(URI_A)))
+        advanceUntilIdle()
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+        viewModel.onIntent(NoteEditorIntent.RemoveImageClicked(viewModel.state.value.images.single()))
+        runCurrent()
+        assertFalse(viewModel.state.value.hasUnsavedChanges)
+        assertTrue(viewModel.state.value.interceptsBack)
+
+        viewModel.onIntent(NoteEditorIntent.LeaveDialogDismissed)
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given leave dialog when discard chosen then keeps intercepting back through navigating back`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveDiscardClicked)
+            assertTrue(viewModel.state.value.interceptsBack)
+
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            assertTrue(viewModel.state.value.interceptsBack)
+        }
+    }
+
+    @Test
+    fun `given leave dialog when save chosen then keeps intercepting back through navigating back`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+            assertTrue(viewModel.state.value.interceptsBack)
+
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            assertTrue(viewModel.state.value.interceptsBack)
+        }
+    }
+
+    @Test
+    fun `given leave dialog and save failure when save chosen then keeps intercepting back for pending changes`() =
+        runTest {
+            val viewModel = openManually()
+            viewModel.typeInTitle("!")
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            runCurrent()
+            repository.failure = NoteError.Storage
+
+            viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.isLeaveDialogVisible)
+            assertTrue(viewModel.state.value.hasUnsavedChanges)
+            assertTrue(viewModel.state.value.interceptsBack)
+        }
+
+    @Test
+    fun `given nothing pending in autosave mode when back clicked then keeps intercepting back through navigating back`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                assertTrue(viewModel.state.value.interceptsBack)
+
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                assertTrue(viewModel.state.value.interceptsBack)
+            }
+        }
+
+    @Test
+    fun `given nothing pending in manual mode when back clicked then keeps intercepting back through navigating back`() =
+        runTest {
+            val viewModel = openManually()
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                assertTrue(viewModel.state.value.interceptsBack)
+
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                assertTrue(viewModel.state.value.interceptsBack)
+            }
+        }
+
+    @Test
+    fun `given save failure on leaving in autosave mode when back clicked then stays and keeps intercepting back`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+            viewModel.typeInTitle("!")
+            repository.failure = NoteError.Storage
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+
+                assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_save_error), awaitItem())
+                advanceUntilIdle()
+                expectNoEvents()
+            }
+            assertTrue(viewModel.state.value.interceptsBack)
+            assertEquals(existing, repository.notes[existing.id])
+        }
+
+    @Test
+    fun `given save failure on leaving in autosave mode when retried successfully then navigates back`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        viewModel.typeInTitle("!")
+        repository.failure = NoteError.Storage
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        advanceUntilIdle()
+        repository.failure = null
+
+        viewModel.effects.test {
+            skipItems(1)
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+        assertEquals(existing.title + "!", repository.notes.getValue(existing.id).title)
+    }
+
+    @Test
+    fun `given move to trash when delete clicked then keeps intercepting back through leaving`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+            assertTrue(viewModel.state.value.interceptsBack)
+
+            assertEquals(NoteEditorEffect.MovedToTrash(existing.id), awaitItem())
+            assertTrue(viewModel.state.value.interceptsBack)
+        }
+    }
+
+    @Test
+    fun `given move to trash failure when delete clicked then stops intercepting back`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        repository.failure = NoteError.Storage
+
+        viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.interceptsBack)
+        assertEquals(existing, repository.notes[existing.id])
+    }
+
+    // --- Un solo NavigateBack por salida (spec 015, RF-21) ---
+
+    @Test
+    fun `given exit saving in autosave mode when back clicked again then navigates back once and saves once`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+            viewModel.typeInTitle("!")
+            val gate = CompletableDeferred<Unit>()
+            repository.saveNoteGate = gate
+
+            viewModel.effects.test {
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                runCurrent()
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                runCurrent()
+                gate.complete(Unit)
+                advanceUntilIdle()
+
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                expectNoEvents()
+            }
+            assertEquals(1, repository.saveCount)
+            assertEquals(existing.title + "!", repository.notes.getValue(existing.id).title)
+        }
+
+    @Test
+    fun `given leave dialog when save chosen twice then navigates back once and saves once`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        repository.saveChangesGate = gate
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+            runCurrent()
+            viewModel.onIntent(NoteEditorIntent.LeaveSaveClicked)
+            runCurrent()
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(1, repository.saveCount)
+    }
+
+    @Test
+    fun `given leave dialog when discard chosen twice then navigates back once`() = runTest {
+        val viewModel = openManually()
+        viewModel.typeInTitle("!")
+        viewModel.onIntent(NoteEditorIntent.BackClicked)
+        runCurrent()
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.LeaveDiscardClicked)
+            viewModel.onIntent(NoteEditorIntent.LeaveDiscardClicked)
+            advanceUntilIdle()
+
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(existing, repository.notes[existing.id])
+    }
+
+    @Test
+    fun `given move to trash in progress when back clicked then only reports moved to trash`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        repository.moveToTrashGate = gate
+
+        viewModel.effects.test {
+            viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+            runCurrent()
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            runCurrent()
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(NoteEditorEffect.MovedToTrash(existing.id), awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(0, repository.saveCount)
+        assertTrue(existing.id in repository.trashed)
+    }
+
+    @Test
+    fun `given move to trash failure when back clicked afterwards then navigates back`() = runTest {
+        repository.notes[existing.id] = existing
+        val viewModel = createViewModel(existing.id)
+        advanceUntilIdle()
+        repository.failure = NoteError.Storage
+        viewModel.onIntent(NoteEditorIntent.DeleteClicked)
+        advanceUntilIdle()
+        repository.failure = null
+
+        viewModel.effects.test {
+            assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error), awaitItem())
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+
+            assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+        }
+        assertEquals(existing, repository.notes[existing.id])
+    }
+
+    @Test
+    fun `given save failure on leaving in autosave mode when back clicked twice afterwards then navigates back once`() =
+        runTest {
+            repository.notes[existing.id] = existing
+            val viewModel = createViewModel(existing.id)
+            advanceUntilIdle()
+            viewModel.typeInTitle("!")
+            repository.failure = NoteError.Storage
+            viewModel.onIntent(NoteEditorIntent.BackClicked)
+            advanceUntilIdle()
+            repository.failure = null
+
+            viewModel.effects.test {
+                assertEquals(NoteEditorEffect.ShowMessage(R.string.note_editor_save_error), awaitItem())
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                viewModel.onIntent(NoteEditorIntent.BackClicked)
+                advanceUntilIdle()
+
+                assertEquals(NoteEditorEffect.NavigateBack, awaitItem())
+                expectNoEvents()
+            }
+            assertEquals(existing.title + "!", repository.notes.getValue(existing.id).title)
+        }
+
     /** Escribe [text] en el contenido letra a letra, con el cursor al final, como un teclado. */
     private fun NoteEditorViewModel.typeInContent(text: String) {
         text.forEach { char ->
@@ -3822,6 +4444,10 @@ class NoteEditorViewModelTest {
         var removeImageFailure: NoteError? = null
         /** Si no es nulo, `saveNoteChanges` espera a que se complete: simula un guardado en curso. */
         var saveChangesGate: CompletableDeferred<Unit>? = null
+        /** Si no es nulo, `saveNote` espera a que se complete: simula un guardado automático en curso. */
+        var saveNoteGate: CompletableDeferred<Unit>? = null
+        /** Si no es nulo, `moveToTrash` espera a que se complete: simula un paso a la papelera en curso. */
+        var moveToTrashGate: CompletableDeferred<Unit>? = null
         var saveCount = 0
             private set
         private var nextId = 1L
@@ -3834,6 +4460,7 @@ class NoteEditorViewModelTest {
 
         override suspend fun saveNote(note: Note): AppResult<Long, NoteError> {
             saveCount++
+            saveNoteGate?.await()
             failure?.let { return AppResult.Error(it) }
             val id = if (note.id == Note.NEW_ID) nextId++ else note.id
             // Como la implementación real, guardar la nota no toca sus imágenes.
@@ -3885,6 +4512,7 @@ class NoteEditorViewModelTest {
         }
 
         override suspend fun moveToTrash(id: Long, trashedAt: Long): AppResult<Unit, NoteError> {
+            moveToTrashGate?.await()
             failure?.let { return AppResult.Error(it) }
             val note = notes.remove(id) ?: return AppResult.Error(NoteError.NotFound)
             trashed[id] = TrashedNote(note, trashedAt)
