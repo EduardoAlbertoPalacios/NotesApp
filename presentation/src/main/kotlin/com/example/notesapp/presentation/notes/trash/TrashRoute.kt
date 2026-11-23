@@ -1,6 +1,5 @@
 package com.example.notesapp.presentation.notes.trash
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,8 +22,6 @@ fun TrashRoute(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val currentOnNavigateBack by rememberUpdatedState(onNavigateBack)
-
-    BackHandler { viewModel.onIntent(TrashIntent.BackClicked) }
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
