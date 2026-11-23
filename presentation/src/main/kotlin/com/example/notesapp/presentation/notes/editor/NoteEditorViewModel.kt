@@ -117,6 +117,16 @@ class NoteEditorViewModel @Inject constructor(
     private var hasSavedInSession = false
     /** Modo manual: copia de imágenes en curso; hay que esperarla antes de decidir si hay cambios al salir. */
     private var importJob: Job? = null
+    /*
+     * `interceptsBack` (spec 015, D2) depende de `hasPendingChanges`, `note`, `isManualSave`, `runningWork`,
+     * `isLeaving` y del diálogo de salida. Todo cambio de una de ellas debe ir seguido de `refreshInterceptsBack()`
+     * (directa o vía `refreshPending`, `withSaveLock`, `launchTracked`, `startLeaving` o `cancelLeaving`): si no,
+     * el gesto de atrás podría cerrar el editor sin guardar.
+     */
+    /** Guardados, copias o quitas de imágenes en marcha (o esperando el candado): Atrás debe esperarlos. */
+    private var runningWork = 0
+    /** Salida (Atrás, diálogo o papelera) ya empezada: el gesto no puede saltársela a medias. */
+    private var isLeaving = false
 
     init {
         val noteId = savedStateHandle.get<Long>(NOTE_ID_ARG) ?: Note.NEW_ID
@@ -155,7 +165,10 @@ class NoteEditorViewModel @Inject constructor(
             NoteEditorIntent.SaveClicked -> viewModelScope.launch { saveManually() }
             NoteEditorIntent.LeaveSaveClicked -> leaveSaving()
             NoteEditorIntent.LeaveDiscardClicked -> leaveDiscarding()
-            NoteEditorIntent.LeaveDialogDismissed -> _state.update { it.copy(isLeaveDialogVisible = false) }
+            NoteEditorIntent.LeaveDialogDismissed -> {
+                _state.update { it.copy(isLeaveDialogVisible = false) }
+                refreshInterceptsBack()
+            }
             NoteEditorIntent.UndoClicked -> undo()
             is NoteEditorIntent.FocusRequestHandled -> _state.update {
                 if (it.focusRequest?.id == intent.id) it.copy(focusRequest = null) else it
@@ -174,6 +187,7 @@ class NoteEditorViewModel @Inject constructor(
             note = note.copy(color = color)
             _state.update { it.copy(isLoading = false, color = color, isManualSave = isManualSave) }
             restoreDraft()
+            refreshInterceptsBack()
         }
     }
 
@@ -222,6 +236,7 @@ class NoteEditorViewModel @Inject constructor(
                         )
                     }
                     restoreDraft()
+                    refreshInterceptsBack()
                 }
                 is AppResult.Error -> _state.update {
                     it.copy(isLoading = false, loadError = result.error.toLoadError())
@@ -238,6 +253,7 @@ class NoteEditorViewModel @Inject constructor(
             return
         }
         hasPendingChanges = true
+        refreshInterceptsBack()
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             delay(AUTOSAVE_DELAY_MS)
@@ -438,14 +454,15 @@ class NoteEditorViewModel @Inject constructor(
         } else {
             EditorDraftCodec.clear(savedStateHandle)
         }
+        refreshInterceptsBack()
     }
 
     /**
      * Modo manual: guarda de una vez todos los cambios pendientes. Devuelve si quedó todo guardado; si falla,
      * los cambios siguen pendientes y se avisa.
      */
-    private suspend fun saveManually(): Boolean = saveMutex.withLock {
-        if (!_state.value.hasUnsavedChanges) return@withLock true
+    private suspend fun saveManually(): Boolean = withSaveLock {
+        if (!_state.value.hasUnsavedChanges) return@withSaveLock true
         val current = _state.value
         val draft = note.copy(
             title = current.title.text,
@@ -500,14 +517,16 @@ class NoteEditorViewModel @Inject constructor(
     }
 
     private fun leaveSaving() {
-        _state.update { it.copy(isLeaveDialogVisible = false) }
+        if (isLeaving) return
+        startLeaving { it.copy(isLeaveDialogVisible = false) }
         viewModelScope.launch {
-            if (saveManually()) finishSession()
+            if (saveManually()) finishSession() else cancelLeaving()
         }
     }
 
     private fun leaveDiscarding() {
-        _state.update { it.copy(isLeaveDialogVisible = false) }
+        if (isLeaving) return
+        startLeaving { it.copy(isLeaveDialogVisible = false) }
         viewModelScope.launch {
             importJob?.join()
             discardPendingImages()
@@ -581,12 +600,13 @@ class NoteEditorViewModel @Inject constructor(
             return
         }
         hasPendingChanges = true
+        refreshInterceptsBack()
         autosaveJob?.cancel()
         viewModelScope.launch { save() }
     }
 
-    private suspend fun save() = saveMutex.withLock {
-        if (!hasPendingChanges) return@withLock
+    private suspend fun save() = withSaveLock {
+        if (!hasPendingChanges) return@withSaveLock
         val current = _state.value
         val draft = note.copy(
             title = current.title.text,
@@ -633,7 +653,7 @@ class NoteEditorViewModel @Inject constructor(
             importImages(uris)
             return
         }
-        viewModelScope.launch {
+        launchTracked {
             saveMutex.withLock {
                 val current = _state.value
                 // El borrador lleva el texto actual, que se guarda junto con las imágenes.
@@ -671,7 +691,7 @@ class NoteEditorViewModel @Inject constructor(
     /** Modo manual: copia las imágenes, que quedan pendientes hasta guardar. */
     private fun importImages(uris: List<String>) {
         val previous = importJob
-        importJob = viewModelScope.launch {
+        importJob = launchTracked {
             previous?.join()
             when (val result = importNoteImages(uris)) {
                 is AppResult.Success -> {
@@ -689,7 +709,8 @@ class NoteEditorViewModel @Inject constructor(
     private fun removeImageManually(image: NoteImage) {
         if (image in pendingImages) {
             pendingImages = pendingImages - image
-            viewModelScope.launch { discardImageCopies(listOf(image.path)) }
+            // Cuenta como trabajo en curso: un Atrás inmediato espera al borrado y no deja la copia huérfana.
+            launchTracked { discardImageCopies(listOf(image.path)) }
         } else {
             removedImages = removedImages + image
         }
@@ -702,7 +723,7 @@ class NoteEditorViewModel @Inject constructor(
             removeImageManually(image)
             return
         }
-        viewModelScope.launch {
+        launchTracked {
             // Mismo candado que los guardados: evita pisar `note` con un guardado o una carga de imágenes en curso.
             saveMutex.withLock {
                 when (removeNoteImage(image)) {
@@ -717,12 +738,18 @@ class NoteEditorViewModel @Inject constructor(
     }
 
     private fun leave() {
+        // Un segundo Atrás (o la flecha) durante la salida no lanza otra: sacaría dos pantallas (spec 015, RF-21).
+        if (isLeaving) return
+        startLeaving()
         if (isManualSave) {
             viewModelScope.launch {
                 // Una imagen que se está copiando también es un cambio: se espera antes de decidir.
                 importJob?.join()
                 if (_state.value.hasUnsavedChanges) {
+                    // El diálogo sigue interceptando Atrás mientras se ve.
+                    isLeaving = false
                     _state.update { it.copy(isLeaveDialogVisible = true) }
+                    refreshInterceptsBack()
                 } else {
                     finishSession()
                 }
@@ -733,7 +760,11 @@ class NoteEditorViewModel @Inject constructor(
             autosaveJob?.cancel()
             autosaveJob?.join()
             save()
-            if (hasPendingChanges) return@launch
+            if (hasPendingChanges) {
+                // El guardado falló: el editor se queda y Atrás vuelve a intentarlo.
+                cancelLeaving()
+                return@launch
+            }
             // Una nota creada al agregar una imagen queda vacía si luego se quitan todas: no se conserva.
             if (note.id != Note.NEW_ID && note.isBlank) deleteNote(note.id)
             finishSession()
@@ -745,8 +776,10 @@ class NoteEditorViewModel @Inject constructor(
      * RF-8). Una nota que nunca se guardó no llega a la papelera: se descarta y se cierra sin aviso.
      */
     private fun moveToTrash() {
+        if (isLeaving) return
         autosaveJob?.cancel()
         hasPendingChanges = false
+        startLeaving()
         viewModelScope.launch {
             autosaveJob?.join()
             importJob?.join()
@@ -760,8 +793,69 @@ class NoteEditorViewModel @Inject constructor(
                     discardPendingChanges()
                     finishSession(NoteEditorEffect.MovedToTrash(note.id))
                 }
-                is AppResult.Error -> send(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error))
+                is AppResult.Error -> {
+                    cancelLeaving()
+                    send(NoteEditorEffect.ShowMessage(R.string.note_editor_delete_error))
+                }
             }
+        }
+    }
+
+    /** Empieza una salida (con [transform] sobre el estado) y deja de permitir que el gesto la salte. */
+    private fun startLeaving(transform: (NoteEditorUiState) -> NoteEditorUiState = { it }) {
+        isLeaving = true
+        _state.update(transform)
+        refreshInterceptsBack()
+    }
+
+    /** La salida no se completó (guardado o papelera fallidos): el editor se queda abierto. */
+    private fun cancelLeaving() {
+        isLeaving = false
+        refreshInterceptsBack()
+    }
+
+    /** Lanza [block] contando como trabajo en curso desde ya, antes de que la corrutina empiece. */
+    private fun launchTracked(block: suspend () -> Unit): Job {
+        runningWork++
+        refreshInterceptsBack()
+        return viewModelScope.launch {
+            try {
+                block()
+            } finally {
+                runningWork--
+                refreshInterceptsBack()
+            }
+        }
+    }
+
+    /** Guarda con el candado de guardado, contando como trabajo en curso también mientras espera el candado. */
+    private suspend fun <T> withSaveLock(block: suspend () -> T): T {
+        runningWork++
+        refreshInterceptsBack()
+        try {
+            return saveMutex.withLock { block() }
+        } finally {
+            runningWork--
+            refreshInterceptsBack()
+        }
+    }
+
+    /**
+     * Recalcula si Atrás debe pasar por [leave]. Se llama tras cada cambio de lo que lo decide; cuando es falso,
+     * `leave()` solo cerraría el editor, así que `NavHost` puede hacerlo sin perder nada.
+     */
+    private fun refreshInterceptsBack() {
+        _state.update { it.copy(interceptsBack = interceptsBack(it)) }
+    }
+
+    private fun interceptsBack(state: NoteEditorUiState): Boolean {
+        if (isLeaving || state.isLeaveDialogVisible || runningWork > 0) return true
+        return if (isManualSave) {
+            // Incluye las imágenes pendientes o quitadas (ver `refreshPending`).
+            state.hasUnsavedChanges
+        } else {
+            // Cambios a la espera del autoguardado, o una nota guardada que quedó vacía y `leave()` elimina.
+            hasPendingChanges || (note.id != Note.NEW_ID && note.isBlank)
         }
     }
 

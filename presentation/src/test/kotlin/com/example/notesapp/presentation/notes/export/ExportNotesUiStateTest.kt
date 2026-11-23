@@ -96,4 +96,14 @@ class ExportNotesUiStateTest {
     fun `given a selected note while exporting when checked then cannot export`() {
         assertFalse(loaded(selectedIds = setOf(1), isExporting = true).canExport)
     }
+
+    @Test
+    fun `given not exporting when checked then does not intercept back`() {
+        assertFalse(loaded(selectedIds = setOf(1)).interceptsBack)
+    }
+
+    @Test
+    fun `given exporting when checked then intercepts back`() {
+        assertTrue(loaded(selectedIds = setOf(1), isExporting = true).interceptsBack)
+    }
 }

@@ -46,8 +46,9 @@ fun NoteEditorRoute(
         viewModel.onIntent(NoteEditorIntent.ImagesPicked(uris.map { it.toString() }))
     }
 
-    // El gesto de volver también guarda los cambios pendientes antes de salir.
-    BackHandler { viewModel.onIntent(NoteEditorIntent.BackClicked) }
+    // Con algo pendiente, el gesto de volver pasa por el ViewModel, que guarda antes de salir; sin nada
+    // pendiente, `NavHost` cierra el editor con la vista previa del gesto.
+    BackHandler(enabled = state.interceptsBack) { viewModel.onIntent(NoteEditorIntent.BackClicked) }
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->

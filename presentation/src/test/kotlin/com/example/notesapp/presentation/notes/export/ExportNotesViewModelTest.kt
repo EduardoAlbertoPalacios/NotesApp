@@ -440,6 +440,153 @@ class ExportNotesViewModelTest {
         assertSame(notes[1], exported[1])
     }
 
+    // --- Atrás interceptado (spec 015, RF-14) ---
+
+    @Test
+    fun `given loaded and idle when checked then does not intercept back`() = runTest {
+        val viewModel = loadedViewModel(selected = listOf(1))
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given selection when export clicked then intercepts back while preparing`() = runTest {
+        exporter.prepareGate = CompletableDeferred()
+        val viewModel = loadedViewModel(selected = listOf(1))
+
+        viewModel.onIntent(ExportNotesIntent.ExportClicked)
+
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given export prepared when waiting for the document picker then intercepts back`() = runTest {
+        val viewModel = loadedViewModel(selected = listOf(1))
+
+        viewModel.effects.test {
+            viewModel.onIntent(ExportNotesIntent.ExportClicked)
+
+            assertTrue(awaitItem() is ExportNotesEffect.OpenDocumentPicker)
+            assertTrue(viewModel.state.value.interceptsBack)
+        }
+    }
+
+    @Test
+    fun `given saving to destination when checked then intercepts back`() = runTest {
+        exporter.saveGate = CompletableDeferred()
+        val viewModel = pickerOpenViewModel()
+
+        viewModel.onIntent(ExportNotesIntent.DestinationPicked(DESTINATION))
+
+        assertTrue(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given prepare fails when exporting then stops intercepting back`() = runTest {
+        exporter.prepareResult = AppResult.Error(ExportError.WriteFailed)
+        val viewModel = loadedViewModel(selected = listOf(1))
+
+        viewModel.effects.test {
+            viewModel.onIntent(ExportNotesIntent.ExportClicked)
+
+            assertEquals(ExportNotesEffect.ShowMessage(R.string.export_error), awaitItem())
+        }
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given save fails when destination picked then stops intercepting back`() = runTest {
+        exporter.saveResult = AppResult.Error(ExportError.WriteFailed)
+        val viewModel = pickerOpenViewModel()
+
+        viewModel.onIntent(ExportNotesIntent.DestinationPicked(DESTINATION))
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given picker closed without destination when checked then stops intercepting back`() = runTest {
+        val viewModel = pickerOpenViewModel()
+
+        viewModel.onIntent(ExportNotesIntent.DestinationPicked(null))
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given export finished when checked then stops intercepting back`() = runTest {
+        val viewModel = pickerOpenViewModel()
+
+        viewModel.onIntent(ExportNotesIntent.DestinationPicked(DESTINATION))
+
+        assertFalse(viewModel.state.value.interceptsBack)
+    }
+
+    @Test
+    fun `given preparing when back clicked then keeps intercepting back until navigating back`() = runTest {
+        exporter.prepareGate = CompletableDeferred()
+        val viewModel = loadedViewModel(selected = listOf(1))
+        viewModel.onIntent(ExportNotesIntent.ExportClicked)
+
+        viewModel.effects.test {
+            viewModel.onIntent(ExportNotesIntent.BackClicked)
+            assertTrue(viewModel.state.value.interceptsBack)
+
+            assertEquals(ExportNotesEffect.NavigateBack, awaitItem())
+            assertTrue(viewModel.state.value.interceptsBack)
+        }
+    }
+
+    @Test
+    fun `given picker open when back clicked then keeps intercepting back until navigating back`() = runTest {
+        val viewModel = pickerOpenViewModel()
+
+        viewModel.effects.test {
+            assertTrue(awaitItem() is ExportNotesEffect.OpenDocumentPicker)
+
+            viewModel.onIntent(ExportNotesIntent.BackClicked)
+
+            assertEquals(ExportNotesEffect.NavigateBack, awaitItem())
+            assertTrue(viewModel.state.value.interceptsBack)
+        }
+    }
+
+    // --- Un solo NavigateBack por salida (spec 015, RF-21) ---
+
+    @Test
+    fun `given preparing when back clicked twice then navigates back once`() = runTest {
+        exporter.prepareGate = CompletableDeferred()
+        val viewModel = loadedViewModel(selected = listOf(1))
+        viewModel.onIntent(ExportNotesIntent.ExportClicked)
+
+        viewModel.effects.test {
+            viewModel.onIntent(ExportNotesIntent.BackClicked)
+            viewModel.onIntent(ExportNotesIntent.BackClicked)
+            exporter.prepareGate?.complete(Unit)
+
+            assertEquals(ExportNotesEffect.NavigateBack, awaitItem())
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `given saving when back clicked twice then discards export once and navigates back once`() = runTest {
+        exporter.saveGate = CompletableDeferred()
+        val viewModel = pickerOpenViewModel()
+        viewModel.onIntent(ExportNotesIntent.DestinationPicked(DESTINATION))
+
+        viewModel.effects.test {
+            assertTrue(awaitItem() is ExportNotesEffect.OpenDocumentPicker)
+
+            viewModel.onIntent(ExportNotesIntent.BackClicked)
+            viewModel.onIntent(ExportNotesIntent.BackClicked)
+
+            assertEquals(ExportNotesEffect.NavigateBack, awaitItem())
+            expectNoEvents()
+        }
+        assertEquals(listOf(FakeNotesExporter.PREPARED), exporter.discarded)
+    }
+
     private companion object {
         const val NOW = 1_794_484_800_000L
         const val DESTINATION = "content://documents/document/notas.zip"

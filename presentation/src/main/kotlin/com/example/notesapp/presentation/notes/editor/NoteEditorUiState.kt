@@ -47,6 +47,12 @@ data class NoteEditorUiState(
     /** Con [isManualSave], si la nota difiere de su última versión guardada. */
     val hasUnsavedChanges: Boolean = false,
     val isLeaveDialogVisible: Boolean = false,
+    /**
+     * Atrás debe pasar por el ViewModel porque queda algo por hacer antes de salir (guardar, copiar una imagen,
+     * confirmar, borrar la nota vaciada o terminar una salida ya empezada). Falso: `NavHost` puede cerrar el
+     * editor directamente, con la vista previa del gesto, sin perder nada.
+     */
+    val interceptsBack: Boolean = false,
 ) {
     /** La nota ya cargó sin error: solo entonces se pinta su color y se muestran sus acciones. */
     val isNoteVisible: Boolean get() = !isLoading && loadError == null

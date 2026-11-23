@@ -42,6 +42,13 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
         navController = navController,
         startDestination = NotesDestinations.NOTE_LIST,
         modifier = modifier,
+        // Mismas transiciones para todas las pantallas (spec 015, D1).
+        enterTransition = NavTransitions.enter,
+        exitTransition = NavTransitions.exit,
+        popEnterTransition = NavTransitions.popEnter,
+        popExitTransition = NavTransitions.popExit,
+        predictivePopEnterTransition = NavTransitions.predictivePopEnter,
+        predictivePopExitTransition = NavTransitions.predictivePopExit,
     ) {
         composable(NotesDestinations.NOTE_LIST) { entry ->
             // Nota que el editor acaba de mover a la papelera (spec 012, RF-3).
@@ -50,11 +57,12 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
                 .collectAsStateWithLifecycle()
             NoteListRoute(
                 onNavigateToNote = { noteId, category ->
-                    navController.navigate(NotesDestinations.noteEditor(noteId, category))
+                    entry.ifResumed { navController.navigate(NotesDestinations.noteEditor(noteId, category)) }
                 },
-                onNavigateToSettings = { navController.navigate(NotesDestinations.SETTINGS) },
+                onNavigateToSettings = { entry.ifResumed { navController.navigate(NotesDestinations.SETTINGS) } },
                 movedToTrashNoteId = movedToTrashNoteId,
                 onMovedToTrashShown = { results[MOVED_TO_TRASH_NOTE_ID_KEY] = null },
+                modifier = Modifier.blockTouchesWhileExiting(this),
             )
         }
         composable(
@@ -77,6 +85,7 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
                     navController.previousBackStackEntry?.savedStateHandle?.set(MOVED_TO_TRASH_NOTE_ID_KEY, noteId)
                     navController.popBackStack()
                 },
+                modifier = Modifier.blockTouchesWhileExiting(this),
             )
         }
         composable(NotesDestinations.SETTINGS) { entry ->
@@ -86,15 +95,16 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
             SettingsRoute(
                 appVersion = appVersion,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToExport = { navController.navigate(NotesDestinations.EXPORT_NOTES) },
-                onNavigateToTrash = { navController.navigate(NotesDestinations.TRASH) },
-                onNavigateToHelp = { navController.navigate(NotesDestinations.HELP) },
+                onNavigateToExport = { entry.ifResumed { navController.navigate(NotesDestinations.EXPORT_NOTES) } },
+                onNavigateToTrash = { entry.ifResumed { navController.navigate(NotesDestinations.TRASH) } },
+                onNavigateToHelp = { entry.ifResumed { navController.navigate(NotesDestinations.HELP) } },
                 exportedCount = exportedCount,
                 missingImageCount = results[MISSING_IMAGE_COUNT_KEY] ?: 0,
                 onExportResultShown = {
                     results[EXPORTED_COUNT_KEY] = null
                     results.remove<Int>(MISSING_IMAGE_COUNT_KEY)
                 },
+                modifier = Modifier.blockTouchesWhileExiting(this),
             )
         }
         composable(NotesDestinations.EXPORT_NOTES) {
@@ -107,13 +117,20 @@ fun NotesNavHost(appVersion: String, modifier: Modifier = Modifier) {
                     }
                     navController.popBackStack()
                 },
+                modifier = Modifier.blockTouchesWhileExiting(this),
             )
         }
         composable(NotesDestinations.TRASH) {
-            TrashRoute(onNavigateBack = { navController.popBackStack() })
+            TrashRoute(
+                onNavigateBack = { navController.popBackStack() },
+                modifier = Modifier.blockTouchesWhileExiting(this),
+            )
         }
         composable(NotesDestinations.HELP) {
-            HelpRoute(onNavigateBack = { navController.popBackStack() })
+            HelpRoute(
+                onNavigateBack = { navController.popBackStack() },
+                modifier = Modifier.blockTouchesWhileExiting(this),
+            )
         }
     }
 }

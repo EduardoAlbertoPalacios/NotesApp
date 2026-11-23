@@ -1,6 +1,5 @@
 package com.example.notesapp.presentation.help
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,8 +16,6 @@ fun HelpRoute(
     val viewModel: HelpViewModel = hiltViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val currentOnNavigateBack by rememberUpdatedState(onNavigateBack)
-
-    BackHandler { viewModel.onIntent(HelpIntent.BackClicked) }
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->

@@ -17,4 +17,11 @@ data class ExportNotesUiState(
     val selectedCount: Int get() = notes.count { it.id in selectedIds }
     val allSelected: Boolean get() = notes.isNotEmpty() && selectedCount == notes.size
     val canExport: Boolean get() = selectedCount > 0 && !isExporting
+
+    /**
+     * Atrás pasa por el ViewModel solo mientras se exporta, para cancelar y borrar lo generado; incluye el .zip
+     * preparado que espera al selector de documentos, porque [isExporting] sigue activo hasta recibir el destino.
+     * En el resto de casos `NavHost` cierra la pantalla con la vista previa del gesto.
+     */
+    val interceptsBack: Boolean get() = isExporting
 }

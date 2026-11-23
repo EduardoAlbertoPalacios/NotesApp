@@ -55,6 +55,8 @@ class ExportNotesViewModel @Inject constructor(
     private var prepared: PreparedExport? = null
 
     private var exportJob: Job? = null
+    /** Salida ya empezada: un segundo Atrás no lanza otra. */
+    private var isLeaving = false
 
     init {
         getNotes()
@@ -137,6 +139,9 @@ class ExportNotesViewModel @Inject constructor(
 
     /** Volver cancela la exportación en curso; al cancelar, el exportador borra lo que hubiera escrito. */
     private fun leave() {
+        // Un segundo Atrás durante la salida no lanza otra: sacaría también Ajustes (spec 015, RF-21).
+        if (isLeaving) return
+        isLeaving = true
         exportJob?.cancel()
         val export = prepared
         prepared = null
